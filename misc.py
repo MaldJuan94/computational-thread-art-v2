@@ -249,9 +249,6 @@ def draw_diagram(x, y, primary_coords=[], secondary_coords=[], primary_paths=[],
     display(ImageOps.flip(img))
 
 
-
-
-
 def create_background(colors, x, y, line_width_multiplier, max_line_distance, n_lines_total, filename, scaling_factors=(1, 1, 1, 1)):
     
     """
