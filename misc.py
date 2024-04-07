@@ -8,7 +8,6 @@ import numpy as np
 from pathlib import Path
 import pandas as pd
 # import qgrid
-import cairo
 import webcolors
 import torch as t
 
@@ -25,7 +24,7 @@ def get_img_hash(i):
     return 256*256*i[:,:,0] + 256*i[:,:,1] + i[:,:,2]
 
 def hsv_to_rgb_pixel(h, s, v):
-    if s == 0.0: 
+    if s == 0.0:
         return (v, v, v)
     i = int(h*6.)
     f = (h*6.)-i
@@ -120,25 +119,25 @@ def literal_eval(s):
         > floats, e.g. "[4.0]" -> [4.0]
         > strings, e.g. "[[butterfly.png, butterfly_orig.png]]" -> [["butterfly.png", "butterfly_orig.png"]]
         > combinations, e.g. [[0, color]] -> [[0, "color"]]
-            
+
     It also just returns the item, if there's no suitable transformation to perform
     """
     # case: non-string element
     if type(s) != str:
         return s
-    
+
     # case: list of lists
     if "[[" in s:
         list_of_lists = s[2:-2].split("], [")
         return [literal_eval("[" + sublist + "]") for sublist in list_of_lists]
-    
+
     # case: simple list
     elif "[" in s:
         if s == "[]": return []
         sublist = s[1:-1].split(", ")
         sublist = [literal_eval(el) for el in sublist]
         return sublist
-    
+
     # case: string element - this is the "base case"
     else:
         if s.isdigit():
@@ -151,12 +150,12 @@ def literal_eval(s):
 
 # applies the function above for every row of the dataframe (used in write_df_to_pickle)
 def literal_eval_df(df):
-    
+
     df_copy = df.copy()
     for i in df.index:
         for c in df.columns:
             df_copy.at[i, c] = literal_eval(df.at[i, c])
-            
+
     return df_copy
 
 
@@ -172,9 +171,9 @@ def concat_lists(list_of_lists):
 
 # splits lines into ranges corresponding to the number of groups (used to create threading instructions)
 def get_range_of_lines(n_lines, n_groups, group_number, return_slice=False):
-    
+
     # Remember: we count backwards, so we do the best lines last. This is why we go from 1 to (n_lines + 1)
-    
+
     n_lines_per_group = (n_lines // n_groups) + 1
 
     if type(group_number) == tuple:
@@ -184,135 +183,5 @@ def get_range_of_lines(n_lines, n_groups, group_number, return_slice=False):
         print("using `get_range_of_lines`, not a tuple")
         start = (n_lines_per_group * group_number) + 1
         end = min(n_lines_per_group * (group_number + 1), n_lines) + 1
-    
+
     return slice(start, end) if return_slice else range(start, end)
-
-
-# draws a diagram of vertices and lines (useful for physical visualisation)
-def draw_diagram(x, y, primary_coords=[], secondary_coords=[], primary_paths=[], secondary_paths=[], img_width=700, array_coordinate_convention=False):
-
-    # Note
-    # array_coordinate_convention: top-left is origin, coords are (y, x)
-    # not euclidean_coordinate_convention: bottom-left is origin, coords are (x, y)
-
-    # both need to be converted to PIL convention: top-left is origin, coord are (x, y)
-    
-    if img_width == 0:
-        return None
-    
-    if array_coordinate_convention:
-        primary_coords = [(x_, y - y_) for (y_, x_) in primary_coords]
-        secondary_coords = [(x_, y - y_) for (y_, x_) in secondary_coords]
-        primary_paths = [[(x_, y - y_) for (y_, x_) in path] for path in primary_paths]
-        secondary_paths = [[(x_, y - y_) for (y_, x_) in path] for path in secondary_paths]
-
-    # this funky looking formula is just to make sure the border adjusts well to the size of the image
-    all_coords = concat_lists([primary_coords] + [secondary_coords] + primary_paths + secondary_paths)
-    min_x = min(coord[0] for coord in all_coords)
-    max_x = max(coord[0] for coord in all_coords)
-    min_y = min(coord[1] for coord in all_coords)
-    max_y = max(coord[1] for coord in all_coords)
-    required_border = max(-min_x, max_x-x, -min_y, max_y-y, 0)
-    padding = 0.05 * img_width
-    border = int(((required_border * img_width / x) + padding) / (1 + 2 * required_border / x))
-    
-    X = img_width
-    Y = int(((img_width - 2 * border) * y / x) + (2 * border))
-    sf = (X - 2 * border) / x
-
-    img = Image.new("RGB", (X, Y), (240, 240, 240))
-    draw = ImageDraw.Draw(img)
-    
-    for secondary_path in secondary_paths:
-        if len(secondary_path) >= 2:
-            for (x0, y0), (x1, y1) in zip(secondary_path[:-1], secondary_path[1:]):
-                xy = list(border + sf * np.array([x0, y0, x1, y1]))
-                draw.line(xy=xy, fill=(0, 180, 0), width=1)
-
-    for primary_path in primary_paths:
-        if len(primary_path) >= 2:
-            for (x0, y0), (x1, y1) in zip(primary_path[:-1], primary_path[1:]):
-                xy = list(border + sf * np.array([x0, y0, x1, y1]))
-                draw.line(xy=xy, fill=(255, 0, 0), width=1)
-    
-    draw.rectangle(xy=[border, border, X-border, Y-border], outline=(0, 0, 0), width=2)
-    
-        
-    for (x_, y_) in secondary_coords:
-        x_, y_ = int(border + sf*x_), int(border + sf*y_)
-        draw.ellipse(xy=[x_-3, y_-3, x_+3, y_+3], fill=(0, 180, 0), outline=(0, 0, 0)) 
-        
-    for (x_, y_) in primary_coords:
-        x_, y_ = int(border + sf*x_), int(border + sf*y_)
-        draw.ellipse(xy=[x_-3, y_-3, x_+3, y_+3], fill=(255, 0, 0), outline=(0, 0, 0)) 
-
-    display(ImageOps.flip(img))
-
-
-
-
-
-def create_background(colors, x, y, line_width_multiplier, max_line_distance, n_lines_total, filename, scaling_factors=(1, 1, 1, 1)):
-    
-    """
-    Creates an SVG background for my Squarespace thread art website
-    
-        colors: list of RGB tuples (I have them plus black)
-        x, y: integers, represent image dimensions
-        line_width_multiplier: scales the line thickness
-        max_line_distance: float in range [0, 1], determines maximum amount lines can protrude
-        n_lines_total: integer
-    """
-    
-    def convert_point_to_coords(p):
-    
-        if p < x:
-            c = (p, 0)
-            s = 3
-        elif p < x + y:
-            c = (x, p - x)
-            s = 0
-        elif p < 2*x + y:
-            c = (p - x - y, y)
-            s = 1
-        else:
-            c = (0, p - 2*x - y)
-            s = 2
-
-        return (np.array(c), s)
-
-    with cairo.SVGSurface("color/" + filename + ".svg", x, y) as surface:
-
-        context = cairo.Context(surface)
-        context.set_line_width(line_width_multiplier)
-        
-        context.rectangle(0, 0, x, y)
-        context.set_source_rgb(1, 1, 1)
-        context.fill()
-
-        n_lines_per_color = int(n_lines_total / (len(colors) + 1))
-
-        for color in colors + [(0, 0, 0)]:
-
-            context.set_source_rgb(*[c/255 for c in color])
-
-            line_count = 0
-
-            while line_count < n_lines_per_color:
-
-                p1, p2 = np.random.randint(2 * (x + y), size=2)
-                (c1, s1), (c2, s2) = [convert_point_to_coords(p) for p in [p1, p2]]
-
-                if np.any(np.abs(c1 - c2) < 0.01 * max(x, y)):
-                    continue
-
-                line_distance = np.random.random() * max_line_distance * scaling_factors[s1]
-
-                c2 = c1 + line_distance * (c2 - c1)
-                
-                context.move_to(c1[0], c1[1])
-                context.line_to(c2[0], c2[1])
-
-                context.stroke()
-                
-                line_count += 1
