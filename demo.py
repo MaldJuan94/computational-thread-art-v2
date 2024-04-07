@@ -1,12 +1,13 @@
-from coordinates import *
+from IPython.core.display import SVG
+
 from imageColor import *
 from misc import *
 
 PARAMS = dict(
-    name = "owl",
-    x = 700,
+    name = "stag",
+    x = 800,
     n_nodes = 360,
-    filename = "owl.jpg",
+    filename = "stag.jpg",
     w_filename = None,
     palette = dict(
         red = [255, 0, 0],
@@ -48,9 +49,7 @@ line_dict_ = {
 
 lista_tuplas = [(coord[0], coord[1]) for coord in line_dict_['red']]
 
-
-
-paint_canvas_test(
+paint_canvas_plt(
     line_dict,
     MyImg,
     args,
@@ -63,7 +62,7 @@ paint_canvas_test(
     show_individual_colors=True,
 )
 
-paint_canvas_with_node(
+paint_canvas_with_nodes(
     line_dict,
     MyImg,
     args,
@@ -77,7 +76,7 @@ paint_canvas_with_node(
     show_individual_colors=False,
 )
 
-paint_canvas_node(
+paint_canvas_template(
     line_dict,
     MyImg,
     args,

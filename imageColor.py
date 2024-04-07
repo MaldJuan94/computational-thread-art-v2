@@ -1,21 +1,17 @@
 # ====== Includes all functions related to producing full-colour images (like the stag) ======
-import numpy as np
-import pandas as pd
+
 import os
 import math
-import cairo
 from itertools import product
 import time
 from collections import Counter, defaultdict
-from pathlib import Path
 from IPython.display import clear_output
-from PIL import Image, ImageFilter, ImageOps
+from PIL import ImageFilter
 from io import BytesIO
 import base64
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from tqdm import tqdm
 from PyPDF2 import PdfReader, PdfMerger
 from reportlab.lib.colors import black, blue, gray
 from reportlab.lib.pagesizes import A4
@@ -23,8 +19,6 @@ from reportlab.lib.units import cm
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
-from IPython.display import display, HTML
-import torch as t
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict, Union
 from torchtyping import TensorType as TT
@@ -1389,6 +1383,7 @@ def center_crop(img):
     """
     width, height = img.size
     dimensions = min(width, height)
+    dimensions = dimensions - (dimensions % 2)
 
     crop_img = ImageOps.fit(img, (dimensions,dimensions), Image.BILINEAR)
     crop_img.show()
