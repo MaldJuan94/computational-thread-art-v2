@@ -23,9 +23,11 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict, Union
 from torchtyping import TensorType as TT
 import einops
-import matplotlib.pyplot as plt
 from coordinates import *
 from misc import *
+import matplotlib.pyplot as plt
+from pathlib import Path
+import pandas as pd
 
 # A4 = (595.2755905511812, 841.8897637795277)
 # A4 = (596, 870)
@@ -54,23 +56,27 @@ class ThreadArtColorParams():
     seed: int = 0
     pixels_per_batch: int = 32
     num_overlap_rows: int = 6
-    offsetPrint: int = 0
+    is_mobile: bool = False
+    crop_image: bool = False
+    offset_print: int = 0
+    path: str = "images/"
 
     def __post_init__(self):
 
         self.color_names = list(self.palette.keys())
         self.color_values = list(self.palette.values())
         first_color_letters = [color[0] for color in self.color_names]
-        assert len(set(first_color_letters)) == len(first_color_letters), "First letter of each color name must be unique."
+        assert len(set(first_color_letters)) == len(
+            first_color_letters), "First letter of each color name must be unique."
 
-        assert os.path.exists("images/" + self.filename), f"Image {self.filename} not found"
+        assert os.path.exists(self.path + self.filename), f"Image {self.path + self.filename} not found"
 
-        if(True):
-            img_raw = center_crop(Image.open("images/" + self.filename))
+        if self.crop_image:
+            img_raw = center_crop(Image.open(self.path + self.filename))
             self.y = img_raw.height
             self.x = img_raw.width
         else:
-            img_raw = Image.open("images/" + self.filename)
+            img_raw = Image.open(self.path + self.filename)
             self.y = int(self.x * (img_raw.height / img_raw.width))
 
         if self.shape.lower() in ["circle", "ellipse", "round"]:
@@ -79,7 +85,8 @@ class ThreadArtColorParams():
             self.shape = "Rectangle"
 
         self.d_coords, self.d_pixels, self.d_joined, self.d_sides, self.t_pixels = build_through_pixels_dict(
-            self.x, self.y, self.n_nodes, shape=self.shape, critical_distance=14, only_return_d_coords=False, width_to_gap_ratio=1
+            self.x, self.y, self.n_nodes, shape=self.shape, critical_distance=14, only_return_d_coords=False,
+            width_to_gap_ratio=1
         )
 
         if len(self.group_orders) == 1 and self.group_orders.isdigit():
@@ -97,7 +104,12 @@ class ThreadArtColorParams():
             other_colors_weighting=0,
             dithering_params=["clamp"],
             pixels_per_batch=self.pixels_per_batch,
-            num_overlap_rows=self.num_overlap_rows
+            num_overlap_rows=self.num_overlap_rows,
+
+            is_mobile=self.is_mobile,
+            crop_image=self.crop_image,
+            offset_print=self.offset_print,
+            path=self.path
         )
 
     def get_img(self):
@@ -117,26 +129,35 @@ class ThreadArtColorParams():
                 color_list = [self.palette[color0_to_color[char]] for char in v]
                 s = f"<code>{'&nbsp;' * 8}group_orders : </code>" + palette_to_html(color_list)
                 display(HTML(s))
-            elif not(k.startswith("color")):
+            elif not (k.startswith("color")):
                 print(f"{k:>22} : {v}")
         return ""
+
 
 # ===================================================================================================
 
 # Class for images: contains Floyd-Steinberg dithering image function, histogram of colours, different versions of the image, etc
 class Img:
 
-    def __init__(self, x, y, filename, d_pixels=None, palette=None, w_filename=None, wneg_filename=None, other_colors_weighting=0, dithering_params=["clamp"], pixels_per_batch=None, num_overlap_rows=None):
+    def __init__(self, x, y, filename, d_pixels=None, palette=None, w_filename=None, wneg_filename=None,
+                 other_colors_weighting=0, dithering_params=["clamp"], pixels_per_batch=None, num_overlap_rows=None,
+                 is_mobile=False, crop_image=False, offset_print=0, path="images/"):
 
         t0 = time.time()
 
-        self.filename = "images/{}".format(filename)
+        self.crop_image = crop_image
+        self.is_mobile = is_mobile
+        self.path = path
+        self.offset_print = offset_print
+        self.filename = path + "{}".format(filename)
+
         self.x = x
         self.y = y
-        self.palette: Dict[str, Tuple[int, int, int]] = {color_name: tuple(color_value) for color_name, color_value in palette.items()}
+        self.palette: Dict[str, Tuple[int, int, int]] = {color_name: tuple(color_value) for color_name, color_value in
+                                                         palette.items()}
         self.dithering_params = dithering_params
 
-        if (True):
+        if self.crop_image:
             base_image = center_crop(Image.open(self.filename))
         else:
             base_image = Image.open(self.filename).resize((self.x, self.y))
@@ -147,17 +168,18 @@ class Img:
         t_FS = 0
         if palette:
             self.image_dithered, t_FS = self.FS_dither(pixels_per_batch, num_overlap_rows)
-            self.color_histogram, self.mono_images_dict = self.generate_mono_images_dict(d_pixels, other_colors_weighting)
+            self.color_histogram, self.mono_images_dict = self.generate_mono_images_dict(d_pixels,
+                                                                                         other_colors_weighting)
 
         if w_filename:
-            self.w_filename = "images/{}".format(w_filename)
+            self.w_filename = path + "{}".format(w_filename)
             base_image_w = Image.open(self.w_filename).resize((self.x, self.y))
             self.w = 1 - (t.tensor((base_image_w).convert(mode="L").getdata()).reshape((self.y, self.x)) / 255)
         else:
             self.w = None
 
         if wneg_filename:
-            self.wneg_filename = "images/{}".format(wneg_filename)
+            self.wneg_filename = path + "{}".format(wneg_filename)
             base_image_wneg = Image.open(self.wneg_filename).resize((self.x, self.y))
             self.wneg = 1 - (t.tensor((base_image_wneg).convert(mode="L").getdata()).reshape((self.y, self.x)) / 255)
         else:
@@ -183,16 +205,16 @@ class Img:
 
         # Add a batch dimension
         image_dithered = einops.rearrange(
-            t.concat([image_dithered, t.zeros(rows_to_extend_by, self.x, 3)]),
+            t.cat([image_dithered, t.zeros(rows_to_extend_by, self.x, 3)]),
             "(batch y) x rgb -> y x batch rgb",
             batch=num_batches
         )
         # Concat the last `num_overlap_rows` to the start of the image
-        end_of_each_batch = t.concat([
+        end_of_each_batch = t.cat([
             t.zeros(num_overlap_rows, x, 1, 3),
             image_dithered[-num_overlap_rows:, :, :-1],
         ], axis=-2)
-        image_dithered = t.concat([end_of_each_batch, image_dithered], dim=0)
+        image_dithered = t.cat([end_of_each_batch, image_dithered], dim=0)
 
         # # Plot slice images, to check that this is working correctly
         # for batch_no in range(image_dithered.size(2)):
@@ -202,9 +224,9 @@ class Img:
         image_dithered, t_FS = self.FS_dither_batch(image_dithered)
 
         image_dithered = einops.rearrange(
-            image_dithered[num_overlap_rows-1: -1],
+            image_dithered[num_overlap_rows - 1: -1],
             "y x batch rgb -> (batch y) x rgb"
-        )[1:y+1]
+        )[1:y + 1]
 
         t_FS_misc = time.time() - t_FS_misc - t_FS
         print(f"FS dithering (wrapper) complete in {t_FS_misc:.2f}s")
@@ -236,18 +258,18 @@ class Img:
             color: TT["batch", 3] = palette[color_diffs.argmin(dim=0)]
             color_diff: TT["batch", 3] = old_color - color
             row[0] = color
-            row[1] += (7/16) * color_diff
+            row[1] += (7 / 16) * color_diff
             next_row[[0, 1]] += einops.einsum(BC, color_diff, "two, batch rgb -> two batch rgb")
 
             # loop over each pixel in the row, from second to second last
-            for x_ in range(1, self.x-1):
+            for x_ in range(1, self.x - 1):
                 old_color = row[x_]
                 color_diffs = (palette_sq - old_color).pow(2).sum(axis=-1)
                 color = palette[color_diffs.argmin(dim=0)]
                 color_diff = old_color - color
                 row[x_] = color
-                row[x_+1] += (7/16) * color_diff
-                next_row[[x_-1, x_, x_+1]] += einops.einsum(ABC, color_diff, "three, batch rgb -> three batch rgb")
+                row[x_ + 1] += (7 / 16) * color_diff
+                next_row[[x_ - 1, x_, x_ + 1]] += einops.einsum(ABC, color_diff, "three, batch rgb -> three batch rgb")
 
             # deal with the last pixel in the row
             old_color = row[-1]
@@ -259,18 +281,18 @@ class Img:
 
             # update the rows, i.e. changing current row and propagating errors to next row
             image_dithered[y_] = t.clamp(row, 0, 255)
-            image_dithered[y_+1] += next_row
-            if is_clamp: image_dithered[y_+1] = t.clamp(image_dithered[y_+1], 0, 255)
+            image_dithered[y_ + 1] += next_row
+            if is_clamp: image_dithered[y_ + 1] = t.clamp(image_dithered[y_ + 1], 0, 255)
 
         # deal with the last row
         row = image_dithered[-1]
-        for x_ in range(self.x-1):
+        for x_ in range(self.x - 1):
             old_color = row[x_]
             color_diffs = (palette_sq - old_color).pow(2).sum(axis=-1)
             color = palette[color_diffs.argmin(dim=0)]
             color_diff = old_color - color
             row[x_] = color
-            row[x_+1] += color_diff
+            row[x_ + 1] += color_diff
 
         # deal with the last pixel in the last row
         old_color = row[-1]
@@ -290,7 +312,8 @@ class Img:
     def display_output(self, height: int, width: int):
         px.imshow(self.imageRGB.to(t.float), height=height, width=width, template="plotly_dark").show()
         fig = px.imshow(
-            t.stack(list(self.mono_images_dict.values())), height=height, width=width, template="plotly_dark", title="Images per color",
+            t.stack(list(self.mono_images_dict.values())), height=height, width=width, template="plotly_dark",
+            title="Images per color",
             color_continuous_scale="gray", animation_frame=0
         ).update_layout(coloraxis_showscale=False)
         fig.layout.sliders[0].currentvalue.prefix = "color = "
@@ -304,13 +327,13 @@ class Img:
         # gets the pixels which are actually relevant
         boolean_mask = t.zeros(size=self.image_dithered.shape[:-1])
         pixels_y_all, pixels_x_all = list(zip(*d_pixels.values()))
-        pixels_y_all = t.concat(pixels_y_all).long()
-        pixels_x_all = t.concat(pixels_x_all).long()
+        pixels_y_all = t.cat(pixels_y_all).long()
+        pixels_x_all = t.cat(pixels_x_all).long()
         boolean_mask[pixels_y_all, pixels_x_all] = 1
 
-        d_histogram = dict()           # histogram of frequency of colors (cropped to a circle if necessary)
-        d_mono_images_pre = dict()     # mono-color images, before they've been processed
-        d_mono_images_post = dict()    # mono-color images, after processing (i.e. adding weight to nearby colors)
+        d_histogram = dict()  # histogram of frequency of colors (cropped to a circle if necessary)
+        d_mono_images_pre = dict()  # mono-color images, before they've been processed
+        d_mono_images_post = dict()  # mono-color images, after processing (i.e. adding weight to nearby colors)
 
         # loop through each color, creating the pre-processing mono images, and the histogram
         for color_name, color_value in self.palette.items():
@@ -335,7 +358,8 @@ class Img:
     def decompose_image(self, n_lines_total=10000):
 
         n_lines_per_color = [int(self.color_histogram[color] * n_lines_total) for color in self.palette]
-        darkest_idx = [i for i, (color_name, color_values) in enumerate(self.palette.items()) if sum(color_values) == max([sum(cv) for cv in self.palette.values()])][0]
+        darkest_idx = [i for i, (color_name, color_values) in enumerate(self.palette.items()) if
+                       sum(color_values) == max([sum(cv) for cv in self.palette.values()])][0]
         n_lines_per_color[darkest_idx] += (n_lines_total - sum(n_lines_per_color))
 
         max_len_color_name = max(len(color_name) for color_name in self.palette.keys())
@@ -351,7 +375,6 @@ class Img:
 
 # Displays a list of images in one row, similar but slightly different to the `imageBW.py` function (used by function below)
 def display_img(im_list, width):
-
     for im_sublist in im_list:
 
         fig = make_subplots(rows=1, cols=len(im_sublist), horizontal_spacing=0.016)
@@ -369,10 +392,10 @@ def display_img(im_list, width):
                 im.save(stream, format="png")
                 base64_string = prefix + base64.b64encode(stream.getvalue()).decode("utf-8")
 
-            fig.add_trace(go.Image(source=base64_string), row=1, col=idx+1)
+            fig.add_trace(go.Image(source=base64_string), row=1, col=idx + 1)
 
         height = width * (im.height / im.width) * (1 / len(im_sublist))
-        fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), width=width, height=height)
+        fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), width=width, height=height)
         fig.update_xaxes(showticklabels=False).update_yaxes(showticklabels=False)
 
         fig.show(config={'doubleClick': 'reset', 'displayModeBar': False})
@@ -380,12 +403,11 @@ def display_img(im_list, width):
 
 # Displays a grid of all the relevant images: original, monochrome, dithered, color-decomposed, and optionally the weighting (used in Jupyter Notebook)
 def display_splashpage(I, size, w=False, d_coords=None, offset_pixels=1, coord_color=(255, 0, 0)):
-
     if w and I.w is None:
         print("You can't have `w=True` if `I` has no weighting.")
         return None
 
-    offset_list = list(range(-offset_pixels, offset_pixels+1))
+    offset_list = list(range(-offset_pixels, offset_pixels + 1))
 
     img_list = [[I.imageRGB, I.imageBW]]
 
@@ -412,18 +434,17 @@ def display_splashpage(I, size, w=False, d_coords=None, offset_pixels=1, coord_c
 
 # Blurs the monochromatic images (used in the function below)
 def linear_blur_image(image: t.Tensor, rad: int, threeD=False):
-
     if rad == 0:
         return image
 
     # define the matrix, and normalise it
-    mat = t.zeros(2*rad+1, 2*rad+1)
-    std = 0.5*rad
-    for x in range(2*rad+1):
+    mat = t.zeros(2 * rad + 1, 2 * rad + 1)
+    std = 0.5 * rad
+    for x in range(2 * rad + 1):
         x_offset = x - rad
-        for y in range(2*rad+1):
+        for y in range(2 * rad + 1):
             y_offset = y - rad
-            value = 1 - (abs(y_offset)+abs(x_offset))/(2*rad+1) # 1/(abs(y_offset)+abs(x_offset)+1)
+            value = 1 - (abs(y_offset) + abs(x_offset)) / (2 * rad + 1)  # 1/(abs(y_offset)+abs(x_offset)+1)
             mat[y, x] = value
     mat = mat / mat.sum()
 
@@ -431,38 +452,38 @@ def linear_blur_image(image: t.Tensor, rad: int, threeD=False):
 
     if threeD:
         image_size_y, image_size_x, _ = image.shape
-        canvas_size_y = image.size(0) + 2*rad
-        canvas_size_x = image.size(1) + 2*rad
+        canvas_size_y = image.size(0) + 2 * rad
+        canvas_size_x = image.size(1) + 2 * rad
         canvas = t.zeros(canvas_size_y, canvas_size_x, 3)
-        for x in range(2*rad+1):
-            for y in range(2*rad+1):
-                canvas[y:y+image_size_y, x:x+image_size_x, :] += mat[y, x] * image
+        for x in range(2 * rad + 1):
+            for y in range(2 * rad + 1):
+                canvas[y:y + image_size_y, x:x + image_size_x, :] += mat[y, x] * image
     else:
         image_size_y, image_size_x = image.shape
-        canvas_size_y = image.size(0) + 2*rad
-        canvas_size_x = image.size(1) + 2*rad
+        canvas_size_y = image.size(0) + 2 * rad
+        canvas_size_x = image.size(1) + 2 * rad
         canvas = t.zeros(canvas_size_y, canvas_size_x)
-        for x in range(2*rad+1):
-            for y in range(2*rad+1):
-                canvas[y:y+image_size_y, x:x+image_size_x] += mat[y, x] * image
+        for x in range(2 * rad + 1):
+            for y in range(2 * rad + 1):
+                canvas[y:y + image_size_y, x:x + image_size_x] += mat[y, x] * image
 
     # crop the canvas, and return it
-    return canvas[rad : -rad, rad : -rad]
+    return canvas[rad: -rad, rad: -rad]
 
 
 # Performs either linear blurring (image above) or Gaussian (used in `create_canvas` function, for image processing before creating output)
 def blur_image(img: t.Tensor, rad: int, mode="linear", **kwargs):
-
     if mode == "linear":
         return linear_blur_image(img, rad, **kwargs)
 
     elif mode == "gaussian":
-        return t.from_numpy(np.asarray(Image.fromarray(img.astype("uint8")).filter(ImageFilter.GaussianBlur(radius=rad)))).to(t.float)
+        return t.from_numpy(
+            np.asarray(Image.fromarray(img.astype("uint8")).filter(ImageFilter.GaussianBlur(radius=rad)))).to(t.float)
 
 
 # Generates a bunch of random lines and chooses the best one
-def choose_and_subtract_best_line(m_image: t.Tensor, i: int, w: Optional[t.Tensor], n_random_lines: List[int], darkness: float, d_joined: dict, t_pixels: t.Tensor) -> int:
-
+def choose_and_subtract_best_line(m_image: t.Tensor, i: int, w: Optional[t.Tensor], n_random_lines: List[int],
+                                  darkness: float, d_joined: dict, t_pixels: t.Tensor) -> int:
     j_random = t.from_numpy(np.random.choice(d_joined[i], min(len(d_joined[i]), n_random_lines), replace=False))
 
     coords_yx: TT["j", "yx": 2, "pixels"] = t_pixels[i, j_random.long()].long()
@@ -497,13 +518,15 @@ def choose_and_subtract_best_line(m_image: t.Tensor, i: int, w: Optional[t.Tenso
 
     return best_j
 
+
 def create_canvas(I: Img, args: ThreadArtColorParams):
     """
     n_consecutive is to break up the lines, so they don't reveal IP when sent as an svg
     full_sweep_freq gives me stats (currently it's set up to return stats that generate line plots of score as you move one end of a line, trying to understand conceptually how alg works)
     """
 
-    assert len(I.palette) == len(args.n_lines_per_color), "Palette and lines per color don't match. Did you change the palette without re-updating params?"
+    assert len(I.palette) == len(
+        args.n_lines_per_color), "Palette and lines per color don't match. Did you change the palette without re-updating params?"
 
     t0 = time.time()
     line_dict = dict()
@@ -529,43 +552,48 @@ def create_canvas(I: Img, args: ThreadArtColorParams):
         line_dict[color_name] = []
         i = list(args.d_joined.keys())[t.randint(0, len(args.d_joined), (1,))]
 
-        for n in range(n_lines): #, desc=f"Progress for color {color}"): #, leave=False):
+        for n in range(n_lines):  # , desc=f"Progress for color {color}"): #, leave=False):
 
             # Choose and add line
-            j = choose_and_subtract_best_line(m_image, i, w, args.n_random_lines, darkness_dict[color_name], args.d_joined, args.t_pixels)
+            j = choose_and_subtract_best_line(m_image, i, w, args.n_random_lines, darkness_dict[color_name],
+                                              args.d_joined, args.t_pixels)
             line_dict[color_name].append((i, j))
             # Get the outgoing node
-            i = j+1 if (j % 2 == 0) else j-1
+            i = j + 1 if (j % 2 == 0) else j - 1
 
-            if args.n_consecutive != 0 and ((n+1) % args.n_consecutive) == 0:
+            if args.n_consecutive != 0 and ((n + 1) % args.n_consecutive) == 0:
                 i = list(args.d_joined.keys())[t.randint(0, len(args.d_joined), (1,))]
 
-            if n+1 % 50 == 0:
-                print(f"Color {color_name+',':{max_color_name_len+1}} line {n+1:4}/{n_lines:<4} done.", end="\r")
+            if n + 1 % 50 == 0:
+                print(f"Color {color_name + ',':{max_color_name_len + 1}} line {n + 1:4}/{n_lines:<4} done.", end="\r")
 
-        print(f"Color {color_name+',':{max_color_name_len+1}} line {n_lines:4}/{n_lines:<4} done.")
+        print(f"Color {color_name + ',':{max_color_name_len + 1}} line {n_lines:4}/{n_lines:<4} done.")
 
     print(f"total time = {time.time() - t0:.2f}")
 
     return line_dict
 
+
 # Takes the line_dict, and uses it to create an svg of the output, then saves it
 def paint_canvas(
-    line_dict: dict,
-    I: Img,
-    args: ThreadArtColorParams,
-    mode: str = "svg",
-    filename_override: Optional[str] = None,
-    rand_perm: float = 0.0025,
-    fraction: Union[Tuple, Dict] = (0, 1),
-    background_color: Optional[Tuple[int, int, int]] = (0, 0, 0),
-    show_individual_colors: bool = False,
-    img_width=800,
-    sf=8,
-    verbose: bool = False,
+        line_dict: dict,
+        I: Img,
+        args: ThreadArtColorParams,
+        mode: str = "svg",
+        filename_override: Optional[str] = None,
+        rand_perm: float = 0.0025,
+        fraction: Union[Tuple, Dict] = (0, 1),
+        background_color: Optional[Tuple[int, int, int]] = (0, 0, 0),
+        show_individual_colors: bool = False,
+        img_width=800,
+        sf=8,
+        verbose: bool = False,
 ):
 
     assert mode == "svg", "Only svg mode is supported right now."
+    assert args.is_mobile == False, "Can't use cairo when mobile is true."
+
+    import cairo
 
     # if fraction != (0, 1), it means you're not plotting all the lines, only a subset of them - useful to see how many lines are actually needed to make the image look good
     # precise syntax: fraction = (a, b) means you're plotting between the a and bth lines, e.g. (0, 0.5) means the best half
@@ -576,7 +604,8 @@ def paint_canvas(
         }
     else:
         line_dict_ = {
-            color: lines[int(fraction.get(color, (0, 1))[0] * len(lines)):int(fraction.get(color, (0, 1))[1] * len(lines))]
+            color: lines[
+                   int(fraction.get(color, (0, 1))[0] * len(lines)):int(fraction.get(color, (0, 1))[1] * len(lines))]
             for color, lines in line_dict.items()
         }
 
@@ -615,9 +644,8 @@ def paint_canvas(
         if background_color is None:
             context.set_source_rgba(0.0, 0.0, 0.0, 0.0)
         else:
-            context.set_source_rgb(*[c/255 for c in background_color])
+            context.set_source_rgb(*[c / 255 for c in background_color])
         context.paint()
-
 
         # draw lines
         for (i_idx, i) in enumerate(group_orders):
@@ -626,16 +654,16 @@ def paint_canvas(
             color_value = list(I.palette.values())[i]
             lines = line_dict_[color_name]
 
-            context.set_source_rgb(*[c/255 for c in color_value])
+            context.set_source_rgb(*[c / 255 for c in color_value])
 
             n_groups = len([j for j in group_orders if j == i])
             group_order = len([j for j in group_orders[:i_idx] if j == i])
 
             n = int(len(lines) / n_groups)
             lines_to_draw = lines[::-1]
-            lines_to_draw = lines_to_draw[n*group_order : n*(group_order+1)]
+            lines_to_draw = lines_to_draw[n * group_order: n * (group_order + 1)]
 
-            if verbose: print(f"{i_idx+1:2}/{len(group_orders)}: {len(lines_to_draw):4} {color_name}")
+            if verbose: print(f"{i_idx + 1:2}/{len(group_orders)}: {len(lines_to_draw):4} {color_name}")
 
             current_node = -1
 
@@ -669,7 +697,7 @@ def paint_canvas(
                 else:
                     context.set_source_rgba(1.0, 1.0, 1.0, 0.0)
                 context.paint()
-                context.set_source_rgb(*[c/255 for c in color_value])
+                context.set_source_rgb(*[c / 255 for c in color_value])
                 current_node = -1
                 for line in lines:
                     starting_node = line[1]
@@ -687,22 +715,24 @@ def paint_canvas(
 
 # Takes line_dict and d_coord to paint the lines and nails, uses it to create an svg of the output, then saves it
 def paint_canvas_with_nodes(
-    line_dict: dict,
-    I: Img,
-    args: ThreadArtColorParams,
-    mode: str = "svg",
-    filename_override: Optional[str] = None,
-    rand_perm: float = 0.0025,
-    fraction: Union[Tuple, Dict] = (0, 1),
-    background_color: Optional[Tuple[int, int, int]] = (0, 0, 0),
-    show_individual_colors: bool = False,
-    img_width=800,
-    maxNunLines = None,
-    sf=8,
-    verbose: bool = False,
+        line_dict: dict,
+        I: Img,
+        args: ThreadArtColorParams,
+        mode: str = "svg",
+        filename_override: Optional[str] = None,
+        rand_perm: float = 0.0025,
+        fraction: Union[Tuple, Dict] = (0, 1),
+        background_color: Optional[Tuple[int, int, int]] = (0, 0, 0),
+        show_individual_colors: bool = False,
+        img_width=800,
+        maxNunLines=None,
+        sf=8,
+        verbose: bool = False,
 ):
-
     assert mode == "svg", "Only svg mode is supported right now."
+    assert args.is_mobile == False, "Can't use cairo when mobile is true."
+
+    import cairo
 
     # if fraction != (0, 1), it means you're not plotting all the lines, only a subset of them - useful to see how many lines are actually needed to make the image look good
     # precise syntax: fraction = (a, b) means you're plotting between the a and bth lines, e.g. (0, 0.5) means the best half
@@ -713,7 +743,8 @@ def paint_canvas_with_nodes(
         }
     else:
         line_dict_ = {
-            color: lines[int(fraction.get(color, (0, 1))[0] * len(lines)):int(fraction.get(color, (0, 1))[1] * len(lines))]
+            color: lines[
+                   int(fraction.get(color, (0, 1))[0] * len(lines)):int(fraction.get(color, (0, 1))[1] * len(lines))]
             for color, lines in line_dict.items()
         }
 
@@ -743,7 +774,7 @@ def paint_canvas_with_nodes(
 
     print(f"Saving to {img_filename!r}")
 
-    with cairo.SVGSurface(img_filename, I.x + 100, I.y+ 100) as surface:
+    with cairo.SVGSurface(img_filename, I.x + 100, I.y + 100) as surface:
         context = cairo.Context(surface)
         context.scale(I.x, I.y)
         context.set_line_width(0.0002 * args.line_width_multiplier)
@@ -771,7 +802,7 @@ def paint_canvas_with_nodes(
             context.set_source_rgb(0, 0, 0)  # black color for number
 
             # adjust the position of texts to avoid overlaps
-            text = str(index+args.offsetPrint)
+            text = str(index + args.offset_print)
             text_extents = context.text_extents(text)
             text_width = text_extents[4] - text_extents[0]
             # if the text is too long, adjust the position
@@ -781,7 +812,6 @@ def paint_canvas_with_nodes(
             context.move_to(x, y)
             context.show_text(text)
 
-
         currentLine = -1
         # draw lines
         for (i_idx, i) in enumerate(group_orders):
@@ -790,16 +820,16 @@ def paint_canvas_with_nodes(
             color_value = list(I.palette.values())[i]
             lines = line_dict_[color_name]
 
-            context.set_source_rgb(*[c/255 for c in color_value])
+            context.set_source_rgb(*[c / 255 for c in color_value])
 
             n_groups = len([j for j in group_orders if j == i])
             group_order = len([j for j in group_orders[:i_idx] if j == i])
 
             n = int(len(lines) / n_groups)
             lines_to_draw = lines[::-1]
-            lines_to_draw = lines_to_draw[n*group_order : n*(group_order+1)]
+            lines_to_draw = lines_to_draw[n * group_order: n * (group_order + 1)]
 
-            if verbose: print(f"{i_idx+1:2}/{len(group_orders)}: {len(lines_to_draw):4} {color_name}")
+            if verbose: print(f"{i_idx + 1:2}/{len(group_orders)}: {len(lines_to_draw):4} {color_name}")
 
             current_node = -1
 
@@ -810,7 +840,6 @@ def paint_canvas_with_nodes(
 
                 starting_node = line[1]
                 if starting_node != current_node:
-
                     starting_node_coords = np.copy(args.d_coords[starting_node])
                     # add 50 to both x and y coordinates
                     starting_node_coords += 50
@@ -835,22 +864,26 @@ def paint_canvas_with_nodes(
 
     return img_filename
 
+
 # Takes the d_coord to paint the nails is used to create an svg of the output, then saves it
 def paint_canvas_template(
-    line_dict: dict,
-    I: Img,
-    args: ThreadArtColorParams,
-    mode: str = "svg",
-    filename_override: Optional[str] = None,
-    rand_perm: float = 0.0025,
-    fraction: Union[Tuple, Dict] = (0, 1),
-    background_color: Optional[Tuple[int, int, int]] = (0, 0, 0),
-    show_individual_colors: bool = False,
-    img_width=800,
-    sf=8,
-    verbose: bool = False,
+        line_dict: dict,
+        I: Img,
+        args: ThreadArtColorParams,
+        mode: str = "svg",
+        filename_override: Optional[str] = None,
+        rand_perm: float = 0.0025,
+        fraction: Union[Tuple, Dict] = (0, 1),
+        background_color: Optional[Tuple[int, int, int]] = (0, 0, 0),
+        show_individual_colors: bool = False,
+        img_width=800,
+        sf=8,
+        verbose: bool = False,
 ):
     assert mode == "svg", "Only svg mode is supported right now."
+    assert args.is_mobile == False, "Can't use cairo when mobile is true."
+
+    import cairo
 
     # find a name to save the file with
     if filename_override is None:
@@ -878,7 +911,7 @@ def paint_canvas_template(
 
     print(f"Saving to {img_filename!r}")
 
-    with cairo.SVGSurface(img_filename, I.x + 100, I.y+ 100) as surface:
+    with cairo.SVGSurface(img_filename, I.x + 100, I.y + 100) as surface:
         context = cairo.Context(surface)
         context.scale(I.x, I.y)
         context.set_line_width(0.0002 * args.line_width_multiplier)
@@ -906,7 +939,7 @@ def paint_canvas_template(
             context.set_source_rgb(0, 0, 0)  # black color for number
 
             # adjust the position of texts to avoid overlaps
-            text = str(index+args.offsetPrint)
+            text = str(index + args.offset_print)
             text_extents = context.text_extents(text)
             text_width = text_extents[4] - text_extents[0]
             if text_width > 0.004:  # if the text is too long, adjust the position
@@ -917,9 +950,9 @@ def paint_canvas_template(
 
     return img_filename
 
+
 # Permutes coordinates, to stop weird-looking line pattern effects (used by `paint_canvas` function)
 def hacky_permutation(y, x, r):
-
     R = r * (2 * np.random.random() - 1)
 
     if (x < 0.01) or (x > 0.99):
@@ -929,8 +962,8 @@ def hacky_permutation(y, x, r):
 
 
 # Generate instructions for physically creating artwork (assuming rectangular shape)
-def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, font_size, num_cols, num_rows, true_x, show_stats=True, version="n+1", true_thread_diameter=0.25, isFullNiels=False):
-
+def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, font_size, num_cols, num_rows, true_x,
+                              show_stats=True, version="n+1", true_thread_diameter=0.25, is_full_niels=False):
     try:
         font_file = 'lines/courier-prime.regular.ttf'
         prime_font = TTFont('Courier Prime', font_file)
@@ -954,7 +987,7 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
         return f"{node // 10 : 3} {node % 10}", str(parity)
 
     def format_node_per_niels(node_idx, node_idy):
-        return f"{node_idx+args.offsetPrint} {node_idy+args.offsetPrint}"
+        return f"{node_idx + args.offset_print} {node_idy + args.offset_print}"
 
     total_nlines_so_far = 0
     total_nlines = sum([len(value) for value in line_dict.values()])
@@ -996,17 +1029,19 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
         # extend the dictionary of instructions, with titles and instructions
         color_count[color_idx][0] += 1
         thiscolor_group = f"{color_count[color_idx][0]}/{color_count[color_idx][1]}"
-        lines.extend(["=================", f"ByNow = {total_nlines_so_far}/{total_nlines}", f"ByEnd = {total_nlines_so_far + len(line_range)}/{total_nlines}", f"NOW   = {color_name} {thiscolor_group}", "================="])
+        lines.extend(["=================", f"ByNow = {total_nlines_so_far}/{total_nlines}",
+                      f"ByEnd = {total_nlines_so_far + len(line_range)}/{total_nlines}",
+                      f"NOW   = {color_name} {thiscolor_group}", "================="])
         if group_start == 0:
-            if (isFullNiels==False):
+            if is_full_niels == False:
                 lines.append(format_node(lines_colorgroup[-1][-1]))
 
         for idx_ in line_range:
 
-            if (isFullNiels==False):
+            if is_full_niels == False:
                 lines.append(format_node(lines_colorgroup[-idx_][0]))
             else:
-                lines.append(format_node_per_niels(lines_colorgroup[idx_-1][0], lines_colorgroup[idx_-1][1]))
+                lines.append(format_node_per_niels(lines_colorgroup[idx_ - 1][0], lines_colorgroup[idx_ - 1][1]))
         lines.extend(["=================", f"DONE  = {color_name} {thiscolor_group}"])
         total_nlines_so_far += len(line_range)
 
@@ -1015,7 +1050,7 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
 
     while len(lines) > 0:
 
-        next_lines, lines = lines[:num_rows*num_cols], lines[num_rows*num_cols:]
+        next_lines, lines = lines[:num_rows * num_cols], lines[num_rows * num_cols:]
 
         filename = f"lines/lines-{args.name}-{page_counter}.pdf"
         canvas = Canvas(filename, pagesize=A4)
@@ -1029,7 +1064,7 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
         for col_no in range(num_cols):
             for row_no in range(num_rows):
 
-                x = 0.5*cm + col_no*(width / num_cols)
+                x = 0.5 * cm + col_no * (width / num_cols)
                 y = height * (1 - (1 + row_no) / (0.6 + num_rows))
                 if next_lines:
                     next_line = next_lines.pop(0)
@@ -1055,31 +1090,31 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
 
                     to = canvas.beginText()
                     if using_font:
-                        to.setFont("Courier Prime", font_size) # "Symbola"
+                        to.setFont("Courier Prime", font_size)  # "Symbola"
 
                     to.setTextOrigin(x, y)
                     to.setFillColor(black)
                     to.textLine(tens)
 
-                    to.setTextOrigin(x+2.9*(font_size/20)*cm, y)
+                    to.setTextOrigin(x + 2.9 * (font_size / 20) * cm, y)
                     to.setFillColor(blue)
                     to.textLine(units)
 
                     canvas.drawText(to)
 
                     canvas_path = canvas.beginPath()
-                    canvas_path.moveTo(x, y-.25*(font_size/20)*cm)
-                    canvas_path.lineTo(x+3.65*(font_size/20)*cm, y-.25*(font_size/20)*cm)
+                    canvas_path.moveTo(x, y - .25 * (font_size / 20) * cm)
+                    canvas_path.lineTo(x + 3.65 * (font_size / 20) * cm, y - .25 * (font_size / 20) * cm)
                     canvas.drawPath(canvas_path, fill=0, stroke=1)
 
         canvas.setLineWidth(3)
         canvas.setStrokeGray(0.5)
         canvas.setStrokeColor(black)
         canvas_path = canvas.beginPath()
-        canvas_path.moveTo(width/num_cols, 0)
-        canvas_path.lineTo(width/num_cols, height)
-        canvas_path.moveTo(2*width/num_cols, 0)
-        canvas_path.lineTo(2*width/num_cols, height)
+        canvas_path.moveTo(width / num_cols, 0)
+        canvas_path.lineTo(width / num_cols, height)
+        canvas_path.moveTo(2 * width / num_cols, 0)
+        canvas_path.lineTo(2 * width / num_cols, height)
 
         canvas.drawPath(canvas_path, fill=0, stroke=1)
 
@@ -1092,7 +1127,7 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
             merger.append(PdfReader(f))
         os.remove(filename)
     for idx, (pagenum, desc) in enumerate(group_page_list):
-        merger.add_outline_item(title=f"{idx + 1}/{len(group_page_list)} {desc}", pagenum=pagenum-1)
+        merger.add_outline_item(title=f"{idx + 1}/{len(group_page_list)} {desc}", pagenum=pagenum - 1)
         # .add_outline_item
 
     if version is None:
@@ -1113,14 +1148,15 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
 
         df_dicts = {}
         for color_name, lines in line_dict.items():
-            nodes = [i[0]//2 for i in lines]
+            nodes = [i[0] // 2 for i in lines]
             counter = Counter(nodes)
             node_frequencies = np.array([counter.get(i, 0) for i in range(max(args.d_coords) // 2)])
             node_frequencies_averaged = np.convolve(node_frequencies, np.ones(4), 'valid') / 4
             df_dicts[color_name] = node_frequencies_averaged
 
         fig = px.line(pd.DataFrame(df_dicts), labels={"index": "node-pair", "value": "# lines", "variable": "Color"})
-        fig.update_layout(template="ggplot2", width=800, height=450, margin=dict(t=60,r=30,l=30,b=40), title_text="Frequencies of lines at nodes, by color")
+        fig.update_layout(template="ggplot2", width=800, height=450, margin=dict(t=60, r=30, l=30, b=40),
+                          title_text="Frequencies of lines at nodes, by color")
         fig.show()
 
         max_colorname_len = max(len(color_name) for color_name in line_dict.keys())
@@ -1130,7 +1166,7 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
         true_y = image_y * sf
         for color_name, lines in line_dict.items():
             total_distance = sum([dist(args.d_coords[line[0]], args.d_coords[line[1]]) for line in lines])
-            print(f"{color_name:{max_colorname_len}} | {total_distance*sf/1000:.2f} km")
+            print(f"{color_name:{max_colorname_len}} | {total_distance * sf / 1000:.2f} km")
 
         n_buckets = 200
 
@@ -1150,23 +1186,24 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
                 line_len_bucketed = int(line_len * n_buckets / max_len)
                 df_dicts[color_name][line_len_bucketed] += 1
 
-        df_from_dict = pd.DataFrame(df_dicts, index=np.arange(n_buckets+1) * 100/n_buckets)
+        df_from_dict = pd.DataFrame(df_dicts, index=np.arange(n_buckets + 1) * 100 / n_buckets)
 
         fig = px.line(df_from_dict, labels={"index": "distance (as % of max)", "value": "# lines", "variable": "Color"})
-        fig.update_layout(template="ggplot2", width=800, height=450, margin=dict(t=60,r=30,l=30,b=40), title_text="Distance of lines, by color")
+        fig.update_layout(template="ggplot2", width=800, height=450, margin=dict(t=60, r=30, l=30, b=40),
+                          title_text="Distance of lines, by color")
 
-        fig.add_vline(x=100*min(image_x, image_y)/max_len, line_width=3)
+        fig.add_vline(x=100 * min(image_x, image_y) / max_len, line_width=3)
         if args.shape == "Rectangle":
-            fig.add_vline(x=100*max(image_x, image_y)/max_len, line_width=3)
+            fig.add_vline(x=100 * max(image_x, image_y) / max_len, line_width=3)
             fig.add_trace(go.Scatter(
-                x=[100*min(image_x, image_y)/max_len + 3, 100*max(image_x, image_y)/max_len + 3],
+                x=[100 * min(image_x, image_y) / max_len + 3, 100 * max(image_x, image_y) / max_len + 3],
                 y=[0.9 * df_from_dict.values.max(), 0.9 * df_from_dict.values.max()],
                 text=["x", "y"] if image_x < image_y else ["y", "x"],
                 mode="text"
             ))
         else:
             fig.add_trace(go.Scatter(
-                x=[100*image_x/max_len + 3], y=[0.9 * df_from_dict.values.max()],
+                x=[100 * image_x / max_len + 3], y=[0.9 * df_from_dict.values.max()],
                 text=["r"], mode="text"
             ))
         fig["data"][-1]["showlegend"] = False
@@ -1175,11 +1212,12 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
         true_area = 10e6 * true_x * true_y
         if args.shape == "Ellipse":
             true_area *= math.pi / 4
-        print(f"Total area covered (counting overlaps) = {true_area_covered_by_thread/true_area:.3f}")
-        print(r"\nBaseline:\nMDF: around 0.2 is enough. The stag_large sent to Ben was 0.209. This is with true diameter = 0.25, width 120cm, 10000 lines total. And I think down to 0.2 wouldn't have fucked it up, but smaller values might have.\nWheel: 0.264 is what I used for stag, probably 0.3 would have been better (it's got a transparent background!). This would mean about 7200 threads for a standard wheel.")
+        print(f"Total area covered (counting overlaps) = {true_area_covered_by_thread / true_area:.3f}")
+        print(
+            r"\nBaseline:\nMDF: around 0.2 is enough. The stag_large sent to Ben was 0.209. This is with true diameter = 0.25, width 120cm, 10000 lines total. And I think down to 0.2 wouldn't have fucked it up, but smaller values might have.\nWheel: 0.264 is what I used for stag, probably 0.3 would have been better (it's got a transparent background!). This would mean about 7200 threads for a standard wheel.")
+
 
 def create_list_of_all_lines(line_dict, args: ThreadArtColorParams):
-
     all_lines = []
 
     color_names = list(args.palette.keys())
@@ -1199,19 +1237,20 @@ def create_list_of_all_lines(line_dict, args: ThreadArtColorParams):
 
     return all_lines
 
+
 def render_animation(
-    I: Img,
-    args: ThreadArtColorParams,
-    line_dict: dict,
-    x_output,
-    gif_duration,
-    n_frames_total,
-    rand_perm=0.0015,
-    background_color=(255,255,255),
-    d_coords_output=None,
-    isInverse = False
+        I: Img,
+        args: ThreadArtColorParams,
+        line_dict: dict,
+        x_output,
+        gif_duration,
+        n_frames_total,
+        rand_perm=0.0015,
+        background_color=(255, 255, 255),
+        d_coords_output=None,
+        isInverse=False
 ):
-    if not(os.path.exists("animations")):
+    if not (os.path.exists("animations")):
         os.mkdir("animations")
 
     all_lines = create_list_of_all_lines(line_dict, args)
@@ -1228,7 +1267,8 @@ def render_animation(
 
     if d_coords_output is None:
         d_coords_output = build_through_pixels_dict(
-            x_output, y_output, args.n_nodes, shape=args.shape, critical_distance=10, only_return_d_coords=True, width_to_gap_ratio=1
+            x_output, y_output, args.n_nodes, shape=args.shape, critical_distance=10, only_return_d_coords=True,
+            width_to_gap_ratio=1
         )
         print("Generated output pixels dict.")
 
@@ -1265,20 +1305,19 @@ def render_animation(
 
 # Takes line_dict and uses it to create an svg of the output, then saves it, uses the plt library
 def paint_canvas_plt(
-    line_dict: dict,
-    I: Img,
-    args: ThreadArtColorParams,
-    mode: str = "svg",
-    filename_override: Optional[str] = None,
-    rand_perm: float = 0.0025,
-    fraction: Union[Tuple, Dict] = (0, 1),
-    background_color: Optional[Tuple[int, int, int]] = (0, 0, 0),
-    show_individual_colors: bool = False,
-    img_width=800,
-    sf=8,
-    verbose: bool = False,
+        line_dict: dict,
+        I: Img,
+        args: ThreadArtColorParams,
+        mode: str = "svg",
+        filename_override: Optional[str] = None,
+        rand_perm: float = 0.0025,
+        fraction: Union[Tuple, Dict] = (0, 1),
+        background_color: Optional[Tuple[int, int, int]] = (0, 0, 0),
+        show_individual_colors: bool = False,
+        img_width=800,
+        sf=8,
+        verbose: bool = False,
 ):
-
     assert mode == "svg", "Only svg mode is supported right now."
 
     # create a new figure
@@ -1293,7 +1332,8 @@ def paint_canvas_plt(
         }
     else:
         line_dict_ = {
-            color: lines[int(fraction.get(color, (0, 1))[0] * len(lines)):int(fraction.get(color, (0, 1))[1] * len(lines))]
+            color: lines[
+                   int(fraction.get(color, (0, 1))[0] * len(lines)):int(fraction.get(color, (0, 1))[1] * len(lines))]
             for color, lines in line_dict.items()
         }
 
@@ -1333,26 +1373,24 @@ def paint_canvas_plt(
     # else:
     #     context.set_source_rgb(*[c/255 for c in background_color]) args.d_coords[starting_node] / t.tensor([I.y, I.x])
 
-
     for (i_idx, i) in enumerate(group_orders):
 
         color_name = list(I.palette.keys())[i]
         color_value = list(I.palette.values())[i]
         lines = line_dict_[color_name]
 
-        current_color = [c/255 for c in color_value]
+        current_color = [c / 255 for c in color_value]
 
         n_groups = len([j for j in group_orders if j == i])
         group_order = len([j for j in group_orders[:i_idx] if j == i])
 
         n = int(len(lines) / n_groups)
         lines_to_draw = lines[::-1]
-        lines_to_draw = lines_to_draw[n*group_order : n*(group_order+1)]
+        lines_to_draw = lines_to_draw[n * group_order: n * (group_order + 1)]
 
-        if verbose: print(f"{i_idx+1:2}/{len(group_orders)}: {len(lines_to_draw):4} {color_name}")
+        if verbose: print(f"{i_idx + 1:2}/{len(group_orders)}: {len(lines_to_draw):4} {color_name}")
 
         for line in lines_to_draw:
-
             starting_node = line[1]
             y_start, x_start = args.d_coords[starting_node]
             y_start, x_start = hacky_permutation(y_start, x_start, rand_perm)
@@ -1361,7 +1399,8 @@ def paint_canvas_plt(
             y_end, x_end = hacky_permutation(y_end, x_end, rand_perm)
 
             # draw lines
-            plt.plot([x_start, x_end], [y_start, y_end], color=current_color, linewidth=0.05 * args.line_width_multiplier)
+            plt.plot([x_start, x_end], [y_start, y_end], color=current_color,
+                     linewidth=0.05 * args.line_width_multiplier)
 
     # set the aspect ratio of the figure
     plt.gca().set_aspect('equal', adjustable='box')
@@ -1385,7 +1424,6 @@ def center_crop(img):
     dimensions = min(width, height)
     dimensions = dimensions - (dimensions % 2)
 
-    crop_img = ImageOps.fit(img, (dimensions,dimensions), Image.BILINEAR)
-    crop_img.show()
+    crop_img = ImageOps.fit(img, (dimensions, dimensions), Image.BILINEAR)
 
     return crop_img
