@@ -3,11 +3,18 @@ from IPython.core.display import SVG
 from imageColor import *
 from misc import *
 
+
+class CallBack():
+    def onProgressUpdate(text, value):
+        # Esta función se llamará cada vez que se actualice el progreso
+        print(f"{text}: {value}")
+
+
 PARAMS = dict(
-    name="stag",
+    name="tiger",
     x=800,
     n_nodes=360,
-    filename="stag.jpg",
+    filename="tiger.jpg",
     w_filename=None,
     palette=dict(
         red=[255, 0, 0],
@@ -27,7 +34,9 @@ PARAMS = dict(
     offset_print=1,
     path="images/",
     crop_image=False,
-    is_mobile=False
+    is_mobile=False,
+    progress_listener=CallBack
+
 )
 
 args = ThreadArtColorParams(**PARAMS)
@@ -40,7 +49,7 @@ line_dict = create_canvas(MyImg, args)
 
 # create_background([[255, 144, 0], [255,0,0]], 4000, 4000,  1.5, 100, 1000, "test" )
 
-# lista_tuplas = [(tensor[0].item(), tensor[1].item()) for i, tensor in args.d_coords.items()]
+
 fraction = (0, 1)
 line_dict_ = {
     color: lines[int(fraction[0] * len(lines)):int(fraction[1] * len(lines))]
@@ -120,3 +129,4 @@ generate_instructions_pdf(
     version="n+1",
     is_full_niels=True
 )
+

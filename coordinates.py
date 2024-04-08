@@ -4,6 +4,7 @@ import numpy as np
 from tqdm import tqdm
 import torch as t
 
+
 # ================================================================
 
 # Returns distance between two points
@@ -13,9 +14,10 @@ def dist(p0, p1, return_δ=False):
     """
 
     δ = np.subtract(p1, p0)
-    distance = (δ**2).sum()**0.5
+    distance = (δ ** 2).sum() ** 0.5
 
     return (distance, δ / distance) if return_δ else distance
+
 
 # Truncates a single pair of coordinates, to make sure that none are outside the bounds of the image (used in `build_through_pixels_dict` function)
 def truncate_coords(coords, limits):
@@ -27,6 +29,7 @@ def truncate_coords(coords, limits):
         coords[i] = max(0, min(coords[i], limits[i]))
 
     return coords
+
 
 # Truncates an array of pixel coordinates, to make sure that none are outside the bounds of the image (used in `build_through_pixels_dict` function)
 def truncate_pixels(pixels, limits):
@@ -40,6 +43,7 @@ def truncate_pixels(pixels, limits):
 
     return pixels
 
+
 # Gets array of pixels going through any two points (used in lots of other functions)
 def through_pixels(p0, p1):
     """
@@ -50,7 +54,7 @@ def through_pixels(p0, p1):
 
     δ = np.subtract(p1, p0)
 
-    distance = (δ**2).sum()**0.5
+    distance = (δ ** 2).sum() ** 0.5
 
     assert distance > 0, f"Error: {p0} and {p1} have distance zero."
 
@@ -58,8 +62,8 @@ def through_pixels(p0, p1):
 
     return pixels_in_line.T
 
-def get_thick_line(p0, p1, all_coords, thickness=1):
 
+def get_thick_line(p0, p1, all_coords, thickness=1):
     p0y, p0x = p0
     p1y, p1x = p1
 
@@ -68,19 +72,20 @@ def get_thick_line(p0, p1, all_coords, thickness=1):
         b = 1
     else:
         a = (p1y - p0y) / (p1x - p0x)
-        ab_norm = np.sqrt(1 + a**2)
+        ab_norm = np.sqrt(1 + a ** 2)
         a /= ab_norm
         b = -1 / ab_norm
 
-    c_p = a*p0x + b*p0y
-    c_q = a*all_coords[1] + b*all_coords[0]
+    c_p = a * p0x + b * p0y
+    c_q = a * all_coords[1] + b * all_coords[0]
 
     return all_coords[:, np.abs(c_p - c_q) < thickness]
 
+
 # ================================================================
 
-def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_return_d_coords=False, width_to_gap_ratio=1):
-
+def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_return_d_coords=False,
+                              width_to_gap_ratio=1, progress_listener=None):
     if shape == "Rectangle" and type(n_nodes) == int:
         assert (n_nodes % 4) == 0, f"n_nodes = {n_nodes} needs to be divisible by 4, or else there will be an error"
 
@@ -98,11 +103,15 @@ def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_r
             ny = 2 * int(n_nodes * 0.25 * y / (x + y))
 
             while 2 * (nx + ny) < n_nodes:
-                if ny >= nx: ny += 2
-                else: nx += 2
+                if ny >= nx:
+                    ny += 2
+                else:
+                    nx += 2
             while 2 * (nx + ny) > n_nodes:
-                if ny >= nx: ny -= 2
-                else: nx -= 2
+                if ny >= nx:
+                    ny -= 2
+                else:
+                    nx -= 2
         elif isinstance(n_nodes, tuple):
             nx, ny = n_nodes
             n_nodes = 2 * (nx + ny)
@@ -181,8 +190,8 @@ def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_r
                 d_pixels_archetypes[key] = through_pixels(d_coords[i], d_coords[j])
 
         # =============== use the archetypes to fill in the actual lines ===============
-
-        progress_bar = tqdm(desc="Building pixels dict", total=sum([len(d_joined[i]) for i in d_joined]) // 2)
+        total = sum([len(d_joined[i]) for i in d_joined]) // 2
+        progress_bar = tqdm(desc="Building pixels dict", total=total)
 
         for idx, i in enumerate(d_joined):
 
@@ -198,7 +207,7 @@ def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_r
                         i_, j_ = j, n4
                     else:
                         i_, j_ = i, j
-                    δ = (i_ + j_) - (2*n2 + ny)
+                    δ = (i_ + j_) - (2 * n2 + ny)
                     key = f"vertical_{abs(δ)}"
                     pixels = d_pixels_archetypes[key].clone()
                     if δ < 0:
@@ -208,7 +217,7 @@ def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_r
 
                 # === then, check if they're opposite horizontal, if so then populate using the archetypes ===
                 elif (d_sides[i], d_sides[j]) == (0, 2):
-                    δ = (i + j) - (2*n1 + nx)
+                    δ = (i + j) - (2 * n1 + nx)
                     key = f"horizontal_{abs(δ)}"
                     pixels = d_pixels_archetypes[key].clone()
                     if δ < 0:
@@ -255,6 +264,8 @@ def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_r
                     d_pixels[(i, j)] = truncate_pixels(pixels.to(t.int), [y, x]).long()
 
                 progress_bar.update(1)
+                if progress_listener is not None:
+                    progress_listener.onProgressUpdate("building_pixels_dict", int(progress_bar.n / total * 100))
 
         progress_bar.n = sum([len(d_joined[i]) for i in d_joined]) // 2
 
@@ -264,8 +275,8 @@ def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_r
 
         angles = np.linspace(0, 2 * np.pi, n_nodes + 1)[:-1]
 
-        x_coords = 1 + ((0.5*x) - 2) * (1 + np.cos(angles))
-        y_coords = 1 + ((0.5*y) - 2) * (1 - np.sin(angles))
+        x_coords = 1 + ((0.5 * x) - 2) * (1 + np.cos(angles))
+        y_coords = 1 + ((0.5 * y) - 2) * (1 - np.sin(angles))
 
         coords = t.stack([t.from_numpy(y_coords), t.from_numpy(x_coords)]).T
 
@@ -277,7 +288,7 @@ def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_r
             d_joined[i] = sorted(np.mod(range(i + critical_distance, i + (n_nodes + 1 - critical_distance)), n_nodes))
 
         # The second half are added via symmetry
-        total=sum([len(d_joined[i]) for i in d_joined]) // 4
+        total = sum([len(d_joined[i]) for i in d_joined]) // 4
         progress_bar = tqdm(desc="Building pixels dict", total=total)
 
         for i1 in d_joined:
@@ -288,7 +299,7 @@ def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_r
                     break
                 # Check if the reflection of this line is already in the dict
                 reflection = (n_nodes + 1 - i1, n_nodes + 1 - i0)
-                if reflection in d_pixels: # and False:
+                if reflection in d_pixels:  # and False:
                     y_reflected, x_reflected = d_pixels[reflection]
                     d_pixels[(i0, i1)] = t.stack([(y - y_reflected).flip(0), x_reflected.flip(0)])
                 # If reflection isn't in the dict, add it
@@ -296,6 +307,8 @@ def build_through_pixels_dict(x, y, n_nodes, shape, critical_distance=14, only_r
                     p0 = d_coords[i0]
                     d_pixels[(i0, i1)] = through_pixels(p0, p1).to(t.int)
                     progress_bar.update(1)
+            if progress_listener is not None:
+                progress_listener.onProgressUpdate("building_pixels_dict", int(progress_bar.n / total * 100))
 
         if only_return_d_coords:
             return d_coords

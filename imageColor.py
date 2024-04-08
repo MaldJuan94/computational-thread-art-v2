@@ -28,6 +28,8 @@ from misc import *
 import matplotlib.pyplot as plt
 from pathlib import Path
 import pandas as pd
+from typing import Callable
+
 
 # A4 = (595.2755905511812, 841.8897637795277)
 # A4 = (596, 870)
@@ -59,7 +61,8 @@ class ThreadArtColorParams():
     is_mobile: bool = False
     crop_image: bool = False
     offset_print: int = 0
-    path: str = "images/"
+    path: str = "images/",
+    progress_listener: Callable = None
 
     def __post_init__(self):
 
@@ -86,7 +89,7 @@ class ThreadArtColorParams():
 
         self.d_coords, self.d_pixels, self.d_joined, self.d_sides, self.t_pixels = build_through_pixels_dict(
             self.x, self.y, self.n_nodes, shape=self.shape, critical_distance=14, only_return_d_coords=False,
-            width_to_gap_ratio=1
+            width_to_gap_ratio=1, progress_listener=self.progress_listener
         )
 
         if len(self.group_orders) == 1 and self.group_orders.isdigit():
@@ -109,7 +112,8 @@ class ThreadArtColorParams():
             is_mobile=self.is_mobile,
             crop_image=self.crop_image,
             offset_print=self.offset_print,
-            path=self.path
+            path=self.path,
+            progress_listener=self.progress_listener
         )
 
     def get_img(self):
@@ -141,10 +145,11 @@ class Img:
 
     def __init__(self, x, y, filename, d_pixels=None, palette=None, w_filename=None, wneg_filename=None,
                  other_colors_weighting=0, dithering_params=["clamp"], pixels_per_batch=None, num_overlap_rows=None,
-                 is_mobile=False, crop_image=False, offset_print=0, path="images/"):
+                 is_mobile=False, crop_image=False, offset_print=0, path="images/", progress_listener=None):
 
         t0 = time.time()
 
+        self.progress_listener = progress_listener
         self.crop_image = crop_image
         self.is_mobile = is_mobile
         self.path = path
@@ -189,6 +194,8 @@ class Img:
 
     # Performs FS-dithering with progress bar, returns the output (called in __init__)
     def FS_dither(self, pixels_per_batch, num_overlap_rows) -> Tuple[t.Tensor, float]:
+        if self.progress_listener is not None:
+            self.progress_listener.onProgressUpdate("floyd_steinberg_dithering_wrapper", -1)
         '''
         Currently, this doesn't implement the overlapping subsets idea. Will do that next!
         '''
@@ -231,6 +238,8 @@ class Img:
         t_FS_misc = time.time() - t_FS_misc - t_FS
         print(f"FS dithering (wrapper) complete in {t_FS_misc:.2f}s")
 
+        if self.progress_listener is not None:
+            self.progress_listener.onProgressUpdate("floyd_steinberg_dithering_wrapper", 100)
         return image_dithered, t_FS + t_FS_misc
 
     def FS_dither_batch(self, image_dithered: TT["y", "x", "batch", 3]) -> Tuple[t.Tensor, float]:
@@ -246,6 +255,7 @@ class Img:
         y, x, batch = image_dithered.shape[:3]
 
         # loop over each row, from first to second last
+        total = y - 1
         for y_ in tqdm(range(y - 1), desc="Floyd-Steinberg dithering"):
 
             row: TT["x", "batch", 3] = image_dithered[y_].to(t.float)
@@ -283,7 +293,8 @@ class Img:
             image_dithered[y_] = t.clamp(row, 0, 255)
             image_dithered[y_ + 1] += next_row
             if is_clamp: image_dithered[y_ + 1] = t.clamp(image_dithered[y_ + 1], 0, 255)
-
+            if self.progress_listener is not None:
+                self.progress_listener.onProgressUpdate("floyd_steinberg_dithering", int(y_ / total * 100))
         # deal with the last row
         row = image_dithered[-1]
         for x_ in range(self.x - 1):
@@ -305,6 +316,8 @@ class Img:
         clear_output()
         t_FS = time.time() - t0
         print(f"FS dithering complete in {t_FS:.2f}s")
+        if self.progress_listener is not None:
+            self.progress_listener.onProgressUpdate("floyd_steinberg_dithering", 100)
 
         return image_dithered.to(t.int), t_FS
 
@@ -356,7 +369,8 @@ class Img:
 
     # Prints a suggested number of lines, in accordance with histogram frequencies (used in Juypter Notebook)
     def decompose_image(self, n_lines_total=10000):
-
+        if self.progress_listener is not None:
+            self.progress_listener.onProgressUpdate("decompose_image", -1)
         n_lines_per_color = [int(self.color_histogram[color] * n_lines_total) for color in self.palette]
         darkest_idx = [i for i, (color_name, color_values) in enumerate(self.palette.items()) if
                        sum(color_values) == max([sum(cv) for cv in self.palette.values()])][0]
@@ -371,6 +385,8 @@ class Img:
             display(HTML(s))
 
         print(f"`n_lines_per_color` for you to copy: {n_lines_per_color}")
+        if self.progress_listener is not None:
+            self.progress_listener.onProgressUpdate("decompose_image", -1)
 
 
 # Displays a list of images in one row, similar but slightly different to the `imageBW.py` function (used by function below)
@@ -552,7 +568,8 @@ def create_canvas(I: Img, args: ThreadArtColorParams):
         line_dict[color_name] = []
         i = list(args.d_joined.keys())[t.randint(0, len(args.d_joined), (1,))]
 
-        for n in range(n_lines):  # , desc=f"Progress for color {color}"): #, leave=False):
+        progress_bar = tqdm(range(n_lines), desc="Create canvas color: " + color_name)
+        for n in progress_bar:  # , desc=f"Progress for color {color}"): #, leave=False):
 
             # Choose and add line
             j = choose_and_subtract_best_line(m_image, i, w, args.n_random_lines, darkness_dict[color_name],
@@ -566,6 +583,10 @@ def create_canvas(I: Img, args: ThreadArtColorParams):
 
             if n + 1 % 50 == 0:
                 print(f"Color {color_name + ',':{max_color_name_len + 1}} line {n + 1:4}/{n_lines:<4} done.", end="\r")
+
+            if I.progress_listener is not None:
+                I.progress_listener.onProgressUpdate("create_canvas_color_" + color_name,
+                                                     int(progress_bar.n / n_lines * 100))
 
         print(f"Color {color_name + ',':{max_color_name_len + 1}} line {n_lines:4}/{n_lines:<4} done.")
 
@@ -589,7 +610,6 @@ def paint_canvas(
         sf=8,
         verbose: bool = False,
 ):
-
     assert mode == "svg", "Only svg mode is supported right now."
     assert args.is_mobile == False, "Can't use cairo when mobile is true."
 
@@ -677,7 +697,6 @@ def paint_canvas(
 
                 finishing_node = line[0]
                 y, x = args.d_coords[finishing_node] / t.tensor([I.y, I.x])
-                print(args.d_coords[finishing_node])
                 y, x = hacky_permutation(y, x, rand_perm)
                 context.line_to(x, y)
 
@@ -1268,7 +1287,7 @@ def render_animation(
     if d_coords_output is None:
         d_coords_output = build_through_pixels_dict(
             x_output, y_output, args.n_nodes, shape=args.shape, critical_distance=10, only_return_d_coords=True,
-            width_to_gap_ratio=1
+            width_to_gap_ratio=1, progress_listener=args.progress_listener
         )
         print("Generated output pixels dict.")
 
@@ -1373,6 +1392,9 @@ def paint_canvas_plt(
     # else:
     #     context.set_source_rgb(*[c/255 for c in background_color]) args.d_coords[starting_node] / t.tensor([I.y, I.x])
 
+    total = sum([len(line_dict_[list(I.palette.keys())[i]]) for i_idx, i in enumerate(group_orders)]) // 2
+    progress_bar = tqdm(desc=f"Painted lines", total=total)
+
     for (i_idx, i) in enumerate(group_orders):
 
         color_name = list(I.palette.keys())[i]
@@ -1401,6 +1423,9 @@ def paint_canvas_plt(
             # draw lines
             plt.plot([x_start, x_end], [y_start, y_end], color=current_color,
                      linewidth=0.05 * args.line_width_multiplier)
+            progress_bar.update(1)
+            if I.progress_listener is not None:
+                I.progress_listener.onProgressUpdate("painted_lines", int(progress_bar.n / total * 100))
 
     # set the aspect ratio of the figure
     plt.gca().set_aspect('equal', adjustable='box')

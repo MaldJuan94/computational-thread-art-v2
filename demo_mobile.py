@@ -5,7 +5,6 @@ import numpy as np
 
 context = Python.getPlatform().getApplication()
 
-
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):
@@ -42,7 +41,8 @@ def call(progress_listener):
         offset_print=1,
         path=context.getFilesDir().getAbsolutePath() + "/images/",
         crop_image=False,
-        is_mobile=False
+        is_mobile=True,
+        progress_listener = None
     )
 
     progress_listener.onProgressUpdate(10)
