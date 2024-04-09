@@ -12,7 +12,7 @@ class CallBack():
 
 PARAMS = dict(
     name="tiger",
-    x=800,
+    x=700,
     n_nodes=360,
     filename="tiger.jpg",
     w_filename=None,
@@ -32,8 +32,9 @@ PARAMS = dict(
     group_orders="rwobrob",
     line_width_multiplier=1.5,
     offset_print=1,
-    path="images/",
-    crop_image=False,
+    input_path="images/",
+    output_path="outputs/",
+    crop_image=True,
     is_mobile=False,
     progress_listener=CallBack
 
@@ -56,9 +57,9 @@ line_dict_ = {
     for color, lines in line_dict.items()
 }
 
-lista_tuplas = [(coord[0], coord[1]) for coord in line_dict_['red']]
+lista_tuples = [(coord[0], coord[1]) for coord in line_dict_['red']]
 
-paint_canvas_plt(
+result_canvas = paint_canvas(
     line_dict,
     MyImg,
     args,
@@ -68,7 +69,7 @@ paint_canvas_plt(
     filename_override=None,
     img_width=700,
     background_color=(255, 255, 255),
-    show_individual_colors=True,
+    show_individual_colors=False,
 )
 
 paint_canvas_with_nodes(
@@ -85,7 +86,7 @@ paint_canvas_with_nodes(
     show_individual_colors=False,
 )
 
-paint_canvas_template(
+result_template = paint_canvas_template(
     line_dict,
     MyImg,
     args,
@@ -117,7 +118,7 @@ render_animation(
     isInverse=False
 )
 
-generate_instructions_pdf(
+result_pdf = generate_instructions_pdf(
     line_dict,
     MyImg,
     args,
@@ -125,8 +126,12 @@ generate_instructions_pdf(
     num_cols=3,
     num_rows=20,
     true_x=0.58,
-    show_stats=False,
+    show_stats=True,
     version="n+1",
-    is_full_niels=True
+    is_full_niels=True,
+    path="lines/"
 )
 
+result_dir = {"pdf": result_pdf, "template": result_template, "canvas": result_canvas}
+
+print(result_dir)

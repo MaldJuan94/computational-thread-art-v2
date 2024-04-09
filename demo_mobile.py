@@ -5,6 +5,7 @@ import numpy as np
 
 context = Python.getPlatform().getApplication()
 
+
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):
@@ -39,24 +40,21 @@ def call(progress_listener):
         group_orders="rwobrob",
         line_width_multiplier=1.5,
         offset_print=1,
-        path=context.getFilesDir().getAbsolutePath() + "/images/",
+        input_path=context.getFilesDir().getAbsolutePath() + "/images/",
+        output_path=context.getFilesDir().getAbsolutePath() + "/outputs/",
         crop_image=False,
         is_mobile=True,
-        progress_listener = None
+        progress_listener=progress_listener
     )
-
-    progress_listener.onProgressUpdate(10)
 
     args = ThreadArtColorParams(**PARAMS)
 
     MyImg = Img(**args.img_dict)
     MyImg.decompose_image(10000)
     MyImg.display_output(height=500, width=800)
-
-    progress_listener.onProgressUpdate(20)
     line_dict = create_canvas(MyImg, args)
 
-    paint_canvas_plt(
+    result_canvas = paint_canvas_plt(
         line_dict,
         MyImg,
         args,
@@ -69,5 +67,33 @@ def call(progress_listener):
         show_individual_colors=True,
     )
 
-    progress_listener.onProgressUpdate(50)
-    return json.dumps(line_dict, cls=NpEncoder)
+    result_template = paint_template_plt(
+        line_dict,
+        MyImg,
+        args,
+        mode="svg",
+        rand_perm=0.0025,
+        fraction=(0, 1),
+        filename_override=None,
+        img_width=700,
+        background_color=(255, 255, 255),
+        show_individual_colors=False,
+    )
+
+    result_pdf = generate_instructions_pdf(
+        line_dict,
+        MyImg,
+        args,
+        font_size=32,
+        num_cols=3,
+        num_rows=20,
+        true_x=0.58,
+        show_stats=True,
+        version="n+1",
+        is_full_niels=True,
+        path=context.getFilesDir().getAbsolutePath() + "/lines/"
+    )
+
+    result_dir = {"pdf": result_pdf, "template": result_template, "canvas":result_canvas}
+
+    return json.dumps(result_dir, cls=NpEncoder)

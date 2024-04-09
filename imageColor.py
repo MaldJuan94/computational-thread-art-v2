@@ -61,7 +61,8 @@ class ThreadArtColorParams():
     is_mobile: bool = False
     crop_image: bool = False
     offset_print: int = 0
-    path: str = "images/",
+    input_path: str = "images/"
+    output_path: str = "outputs/"
     progress_listener: Callable = None
 
     def __post_init__(self):
@@ -72,14 +73,14 @@ class ThreadArtColorParams():
         assert len(set(first_color_letters)) == len(
             first_color_letters), "First letter of each color name must be unique."
 
-        assert os.path.exists(self.path + self.filename), f"Image {self.path + self.filename} not found"
+        assert os.path.exists(self.input_path + self.filename), f"Image {self.input_path + self.filename} not found"
 
         if self.crop_image:
-            img_raw = center_crop(Image.open(self.path + self.filename))
+            img_raw = center_crop(Image.open(self.input_path + self.filename))
             self.y = img_raw.height
             self.x = img_raw.width
         else:
-            img_raw = Image.open(self.path + self.filename)
+            img_raw = Image.open(self.input_path + self.filename)
             self.y = int(self.x * (img_raw.height / img_raw.width))
 
         if self.shape.lower() in ["circle", "ellipse", "round"]:
@@ -112,7 +113,8 @@ class ThreadArtColorParams():
             is_mobile=self.is_mobile,
             crop_image=self.crop_image,
             offset_print=self.offset_print,
-            path=self.path,
+            input_path=self.input_path,
+            output_path=self.output_path,
             progress_listener=self.progress_listener
         )
 
@@ -145,16 +147,18 @@ class Img:
 
     def __init__(self, x, y, filename, d_pixels=None, palette=None, w_filename=None, wneg_filename=None,
                  other_colors_weighting=0, dithering_params=["clamp"], pixels_per_batch=None, num_overlap_rows=None,
-                 is_mobile=False, crop_image=False, offset_print=0, path="images/", progress_listener=None):
+                 is_mobile=False, crop_image=False, offset_print=0, input_path="images/", output_path="outputs/",
+                 progress_listener=None):
 
         t0 = time.time()
 
         self.progress_listener = progress_listener
         self.crop_image = crop_image
         self.is_mobile = is_mobile
-        self.path = path
+        self.input_path = input_path
+        self.output_path = output_path
         self.offset_print = offset_print
-        self.filename = path + "{}".format(filename)
+        self.filename = input_path + "{}".format(filename)
 
         self.x = x
         self.y = y
@@ -177,14 +181,14 @@ class Img:
                                                                                          other_colors_weighting)
 
         if w_filename:
-            self.w_filename = path + "{}".format(w_filename)
+            self.w_filename = input_path + "{}".format(w_filename)
             base_image_w = Image.open(self.w_filename).resize((self.x, self.y))
             self.w = 1 - (t.tensor((base_image_w).convert(mode="L").getdata()).reshape((self.y, self.x)) / 255)
         else:
             self.w = None
 
         if wneg_filename:
-            self.wneg_filename = path + "{}".format(wneg_filename)
+            self.wneg_filename = input_path + "{}".format(wneg_filename)
             base_image_wneg = Image.open(self.wneg_filename).resize((self.x, self.y))
             self.wneg = 1 - (t.tensor((base_image_wneg).convert(mode="L").getdata()).reshape((self.y, self.x)) / 255)
         else:
@@ -629,16 +633,19 @@ def paint_canvas(
             for color, lines in line_dict.items()
         }
 
+    if not os.path.exists(args.output_path):
+        os.makedirs(args.output_path)
+
     # find a name to save the file with
     if type(filename_override) == type(None):
         counter = 1
         while True:
-            img_filename = f"outputs/{args.name}_{counter:02}.{mode}"
+            img_filename = f"{args.output_path}{args.name}_{counter:02}.{mode}"
             if not Path(img_filename).exists():
                 break
             counter += 1
     else:
-        img_filename = f"outputs/{filename_override}.{mode}"
+        img_filename = f"{args.output_path}{filename_override}.{mode}"
 
     # change the group orders to string, if they're integers
     group_orders = args.group_orders
@@ -731,6 +738,7 @@ def paint_canvas(
                     current_node = finishing_node
                 context.stroke()
 
+    return img_filename
 
 # Takes line_dict and d_coord to paint the lines and nails, uses it to create an svg of the output, then saves it
 def paint_canvas_with_nodes(
@@ -767,16 +775,19 @@ def paint_canvas_with_nodes(
             for color, lines in line_dict.items()
         }
 
+    if not os.path.exists(args.output_path):
+        os.makedirs(args.output_path)
+
     # find a name to save the file with
     if filename_override is None:
         counter = 1
         while True:
-            img_filename = f"outputs/check_{args.name}_{counter:02}.{mode}"
+            img_filename = f"{args.output_path}/check_{args.name}_{counter:02}.{mode}"
             if not Path(img_filename).exists():
                 break
             counter += 1
     else:
-        img_filename = f"outputs/check_{filename_override}.{mode}"
+        img_filename = f"{args.output_path}/check_{filename_override}.{mode}"
 
     # change the group orders to string, if they're integers
     group_orders = args.group_orders
@@ -904,29 +915,19 @@ def paint_canvas_template(
 
     import cairo
 
+    if not os.path.exists(args.output_path):
+        os.makedirs(args.output_path)
+
     # find a name to save the file with
     if filename_override is None:
         counter = 1
         while True:
-            img_filename = f"outputs/template_{args.name}_{counter:02}.{mode}"
+            img_filename = f"{args.output_path}template_{args.name}_{counter:02}.{mode}"
             if not Path(img_filename).exists():
                 break
             counter += 1
     else:
-        img_filename = f"outputs/template_{filename_override}.{mode}"
-
-    # change the group orders to string, if they're integers
-    group_orders = args.group_orders
-    if isinstance(group_orders, (int, np.int64)):
-        single_color_batch = "".join([color_name[0] for color_name in I.palette])
-        group_orders = single_color_batch * group_orders
-    # change the group orders to indices of colours
-    if isinstance(group_orders, str):
-        if group_orders[0].isdigit():
-            group_orders = [int(i) for i in group_orders]
-        else:
-            d = {color_name[0]: idx for idx, (color_name, color_value) in enumerate(I.palette.items())}
-            group_orders = [d[char] for char in group_orders]
+        img_filename = f"{args.output_path}template_{filename_override}.{mode}"
 
     print(f"Saving to {img_filename!r}")
 
@@ -982,14 +983,18 @@ def hacky_permutation(y, x, r):
 
 # Generate instructions for physically creating artwork (assuming rectangular shape)
 def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, font_size, num_cols, num_rows, true_x,
-                              show_stats=True, version="n+1", true_thread_diameter=0.25, is_full_niels=False):
+                              show_stats=True, version="n+1", true_thread_diameter=0.25, is_full_niels=False,
+                              path: str = "lines/"):
     try:
-        font_file = 'lines/courier-prime.regular.ttf'
+        font_file = path + 'courier-prime.regular.ttf'
         prime_font = TTFont('Courier Prime', font_file)
         pdfmetrics.registerFont(prime_font)
         using_font = True
     except:
         using_font = False
+
+    if not os.path.exists(path):
+        os.makedirs(path)
 
     # A4 = (596, 870)
     width = A4[0]
@@ -1071,7 +1076,7 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
 
         next_lines, lines = lines[:num_rows * num_cols], lines[num_rows * num_cols:]
 
-        filename = f"lines/lines-{args.name}-{page_counter}.pdf"
+        filename = f"{path}lines-{args.name}-{page_counter}.pdf"
         canvas = Canvas(filename, pagesize=A4)
 
         page_counter += 1
@@ -1141,7 +1146,7 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
 
     merger = PdfMerger()
     for g in range(page_counter):
-        filename = f"lines/lines-{args.name}-{g}.pdf"
+        filename = f"{path}lines-{args.name}-{g}.pdf"
         with open(filename, "rb") as f:
             merger.append(PdfReader(f))
         os.remove(filename)
@@ -1150,19 +1155,20 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
         # .add_outline_item
 
     if version is None:
-        pdf_filename = f"lines/lines-{args.name}.pdf"
+        pdf_filename = f"{path}lines-{args.name}.pdf"
     elif isinstance(version, int):
-        pdf_filename = f"lines/lines-{args.name}-{version:02d}.pdf"
+        pdf_filename = f"{path}lines-{args.name}-{version:02d}.pdf"
     elif version == "n+1":
         version = 1
-        while os.path.exists(f"lines/lines-{args.name}-{version:02d}.pdf"):
+        while os.path.exists(f"{path}lines-{args.name}-{version:02d}.pdf"):
             version += 1
-        pdf_filename = f"lines/lines-{args.name}-{version:02d}.pdf"
+        pdf_filename = f"{path}lines-{args.name}-{version:02d}.pdf"
     else:
         raise Exception("Invalid version argument. Should be None, int, or 'n+1'.")
     merger.write(pdf_filename)
     print(f"Wrote to {pdf_filename!r}")
 
+    stats_list = []
     if show_stats:
 
         df_dicts = {}
@@ -1184,7 +1190,11 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
         sf = true_x / image_x
         true_y = image_y * sf
         for color_name, lines in line_dict.items():
+            stats_dicts = {}
             total_distance = sum([dist(args.d_coords[line[0]], args.d_coords[line[1]]) for line in lines])
+            stats_dicts["color"] = color_name
+            stats_dicts["distance"] = f"{total_distance * sf / 1000:.2f} km"
+            stats_list.append(stats_dicts)
             print(f"{color_name:{max_colorname_len}} | {total_distance * sf / 1000:.2f} km")
 
         n_buckets = 200
@@ -1234,6 +1244,8 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
         print(f"Total area covered (counting overlaps) = {true_area_covered_by_thread / true_area:.3f}")
         print(
             r"\nBaseline:\nMDF: around 0.2 is enough. The stag_large sent to Ben was 0.209. This is with true diameter = 0.25, width 120cm, 10000 lines total. And I think down to 0.2 wouldn't have fucked it up, but smaller values might have.\nWheel: 0.264 is what I used for stag, probably 0.3 would have been better (it's got a transparent background!). This would mean about 7200 threads for a standard wheel.")
+
+    return {"path": pdf_filename, "stats": stats_list}
 
 
 def create_list_of_all_lines(line_dict, args: ThreadArtColorParams):
@@ -1331,16 +1343,16 @@ def paint_canvas_plt(
         filename_override: Optional[str] = None,
         rand_perm: float = 0.0025,
         fraction: Union[Tuple, Dict] = (0, 1),
-        background_color: Optional[Tuple[int, int, int]] = (0, 0, 0),
+        background_color: Optional[Tuple[int, int, int]] = (255, 255, 255),
         show_individual_colors: bool = False,
         img_width=800,
         sf=8,
-        verbose: bool = False,
+        verbose: bool = False
 ):
     assert mode == "svg", "Only svg mode is supported right now."
 
     # create a new figure
-    plt.figure()
+    plt.figure(facecolor=[c / 255 for c in background_color])
 
     # if fraction != (0, 1), it means you're not plotting all the lines, only a subset of them - useful to see how many lines are actually needed to make the image look good
     # precise syntax: fraction = (a, b) means you're plotting between the a and bth lines, e.g. (0, 0.5) means the best half
@@ -1356,19 +1368,19 @@ def paint_canvas_plt(
             for color, lines in line_dict.items()
         }
 
-    if not os.path.exists("outputs/"):
-        os.makedirs("outputs/")
+    if not os.path.exists(args.output_path):
+        os.makedirs(args.output_path)
 
     # find a name to save the file with
     if type(filename_override) == type(None):
         counter = 1
         while True:
-            img_filename = f"outputs/{args.name}_{counter:02}.{mode}"
+            img_filename = f"{args.output_path}{args.name}_{counter:02}.{mode}"
             if not Path(img_filename).exists():
                 break
             counter += 1
     else:
-        img_filename = f"outputs/{filename_override}.{mode}"
+        img_filename = f"{args.output_path}{filename_override}.{mode}"
 
     # change the group orders to string, if they're integers
     group_orders = args.group_orders
@@ -1384,13 +1396,6 @@ def paint_canvas_plt(
             group_orders = [d[char] for char in group_orders]
 
     print(f"Saving to {img_filename!r}")
-
-    #
-
-    # if background_color is None:
-    #     context.set_source_rgba(0.0, 0.0, 0.0, 0.0)
-    # else:
-    #     context.set_source_rgb(*[c/255 for c in background_color]) args.d_coords[starting_node] / t.tensor([I.y, I.x])
 
     total = sum([len(line_dict_[list(I.palette.keys())[i]]) for i_idx, i in enumerate(group_orders)]) // 2
     progress_bar = tqdm(desc=f"Painted lines", total=total)
@@ -1437,6 +1442,7 @@ def paint_canvas_plt(
 
     # save the figure as SVG
     plt.savefig(img_filename, format='svg', bbox_inches='tight', pad_inches=0)
+    return img_filename
 
 
 def center_crop(img):
@@ -1452,3 +1458,102 @@ def center_crop(img):
     crop_img = ImageOps.fit(img, (dimensions, dimensions), Image.BILINEAR)
 
     return crop_img
+
+
+# Takes line_dict and uses it to create an svg of the output, then saves it, uses the plt library
+def paint_template_plt(
+        line_dict: dict,
+        I: Img,
+        args: ThreadArtColorParams,
+        mode: str = "svg",
+        filename_override: Optional[str] = None,
+        rand_perm: float = 0.0025,
+        fraction: Union[Tuple, Dict] = (0, 1),
+        background_color: Optional[Tuple[int, int, int]] = (255, 255, 255),
+        show_individual_colors: bool = False,
+        img_width=800,
+        sf=8,
+        verbose: bool = False
+):
+    assert mode == "svg", "Only svg mode is supported right now."
+
+    # create a new figure
+    plt.figure(facecolor=[c / 255 for c in background_color])
+
+    # if fraction != (0, 1), it means you're not plotting all the lines, only a subset of them - useful to see how many lines are actually needed to make the image look good
+    # precise syntax: fraction = (a, b) means you're plotting between the a and bth lines, e.g. (0, 0.5) means the best half
+    if type(fraction) == tuple:
+        line_dict_ = {
+            color: lines[int(fraction[0] * len(lines)):int(fraction[1] * len(lines))]
+            for color, lines in line_dict.items()
+        }
+    else:
+        line_dict_ = {
+            color: lines[
+                   int(fraction.get(color, (0, 1))[0] * len(lines)):int(fraction.get(color, (0, 1))[1] * len(lines))]
+            for color, lines in line_dict.items()
+        }
+
+    if not os.path.exists(args.output_path):
+        os.makedirs(args.output_path)
+
+    # find a name to save the file with
+    if type(filename_override) == type(None):
+        counter = 1
+        while True:
+            img_filename = f"{args.output_path}template_{args.name}_{counter:02}.{mode}"
+            if not Path(img_filename).exists():
+                break
+            counter += 1
+    else:
+        img_filename = f"{args.output_path}template_{filename_override}.{mode}"
+
+    # change the group orders to string, if they're integers
+    group_orders = args.group_orders
+    if type(group_orders) in [int, np.int64]:
+        single_color_batch = "".join([color_name[0] for color_name in I.palette])
+        group_orders = single_color_batch * group_orders
+    # change the group orders to indices of colours
+    if type(group_orders) == str:
+        if group_orders[0].isdigit():
+            group_orders = [int(i) for i in group_orders]
+        else:
+            d = {color_name[0]: idx for idx, (color_name, color_value) in enumerate(I.palette.items())}
+            group_orders = [d[char] for char in group_orders]
+
+    print(f"Saving to {img_filename!r}")
+
+    progress_bar = tqdm(desc=f"Painted dots template", total=len(args.d_coords))
+
+    # adjust font size based on image size and coordinates
+    font_size = min(0.008, 0.005 * (I.x + I.y) / 1600)  # dynamically adjust font size
+
+    # draw the points with their number
+    for index, coord in enumerate(args.d_coords):
+        new_coords = np.copy(args.d_coords[index])
+        # add 50 to both x and y coordinates
+        new_coords += 50
+        y, x = new_coords / t.tensor([I.y, I.x])
+        y, x = hacky_permutation(y, x, rand_perm)
+
+        plt.scatter(x, y, color=(0.1, 0.2, 0.5), s=0.008)  # 0.001 is the radius of the point
+
+        # adjust the position of texts to avoid overlaps
+        text = str(index + args.offset_print)
+        plt.text(x, y, text, fontsize=font_size, ha='center')
+
+        progress_bar.update(1)
+        if I.progress_listener is not None:
+            I.progress_listener.onProgressUpdate("painted_template", int(progress_bar.n / progress_bar.total * 100))
+
+    # set the aspect ratio of the figure
+    plt.gca().set_aspect('equal', adjustable='box')
+    # Invert the y-axis to invert the image
+    plt.gca().invert_yaxis()
+
+    # hide axes and frame
+    plt.axis('off')
+
+    # save the figure as SVG
+    plt.savefig(img_filename, format='svg', bbox_inches='tight', pad_inches=0)
+    return img_filename
