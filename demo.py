@@ -11,10 +11,10 @@ class CallBack():
 
 
 PARAMS = dict(
-    name="tiger",
-    x=700,
-    n_nodes=360,
-    filename="tiger.jpg",
+    name="owl",
+    x=770,
+    n_nodes=204,
+    filename="owl.jpg",
     w_filename=None,
     palette=dict(
         red=[255, 0, 0],
@@ -24,7 +24,7 @@ PARAMS = dict(
     ),
     n_lines_per_color=[500, 100, 1000, 4000],
     # n_lines_per_color = [5,5],
-    shape="Ellipse",
+    shape="Ellipses",
     n_random_lines=150,
     darkness=0.18,
     blur_rad=4,
@@ -34,7 +34,7 @@ PARAMS = dict(
     offset_print=1,
     input_path="images/",
     output_path="outputs/",
-    crop_image=True,
+    crop_image=False,
     is_mobile=False,
     progress_listener=CallBack
 
@@ -99,8 +99,8 @@ result_template = paint_canvas_template(
     show_individual_colors=False,
 )
 
-with open('outputs/stag_01.svg', 'r') as f:
-    display(SVG(f.read()))
+# with open('outputs/stag_01.svg', 'r') as f:
+#     display(SVG(f.read()))
 
 x_output = 2000
 gif_duration = 125
