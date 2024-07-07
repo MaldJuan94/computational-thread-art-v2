@@ -2,6 +2,18 @@ from IPython.core.display import SVG
 
 from imageColor import *
 from misc import *
+import json
+
+
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
 
 
 class CallBack():
@@ -11,25 +23,23 @@ class CallBack():
 
 
 PARAMS = dict(
-    name="owl",
-    x=770,
-    n_nodes=204,
-    filename="owl.jpg",
+    name="face",
+    x=700,
+    n_nodes=500,
+    filename="face.jpeg",
     w_filename=None,
     palette=dict(
-        red=[255, 0, 0],
         white=[255, 255, 255],
-        orange=[255, 144, 0],
         black=[0, 0, 0]
     ),
-    n_lines_per_color=[500, 100, 1000, 4000],
+    n_lines_per_color=[700, 4000],
     # n_lines_per_color = [5,5],
     shape="Ellipses",
     n_random_lines=150,
     darkness=0.18,
     blur_rad=4,
     # group_orders = "rw",
-    group_orders="rwobrob",
+    group_orders="bwb",
     line_width_multiplier=1.5,
     offset_print=1,
     input_path="images/",
@@ -57,7 +67,7 @@ line_dict_ = {
     for color, lines in line_dict.items()
 }
 
-lista_tuples = [(coord[0], coord[1]) for coord in line_dict_['red']]
+##lista_tuples = [(coord[0], coord[1]) for coord in line_dict_['red']]
 
 result_canvas = paint_canvas(
     line_dict,
@@ -70,6 +80,19 @@ result_canvas = paint_canvas(
     img_width=700,
     background_color=(255, 255, 255),
     show_individual_colors=False,
+)
+
+result_canvas2 = paint_canvas_plt(
+    line_dict,
+    MyImg,
+    args,
+    mode="svg",
+    rand_perm=0.0025,
+    fraction=(0, 1),
+    filename_override=None,
+    img_width=700,
+    background_color=(255, 255, 255),
+    show_individual_colors=True,
 )
 
 paint_canvas_with_nodes(
@@ -135,3 +158,5 @@ result_pdf = generate_instructions_pdf(
 result_dir = {"pdf": result_pdf, "template": result_template, "canvas": result_canvas}
 
 print(result_dir)
+
+print(json.dumps(result_dir, cls=NpEncoder))

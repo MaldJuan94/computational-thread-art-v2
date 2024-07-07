@@ -390,7 +390,7 @@ class Img:
 
         print(f"`n_lines_per_color` for you to copy: {n_lines_per_color}")
         if self.progress_listener is not None:
-            self.progress_listener.onProgressUpdate("decompose_image", -1)
+            self.progress_listener.onProgressUpdate("decompose_image", 100)
 
 
 # Displays a list of images in one row, similar but slightly different to the `imageBW.py` function (used by function below)
@@ -594,6 +594,9 @@ def create_canvas(I: Img, args: ThreadArtColorParams):
 
         print(f"Color {color_name + ',':{max_color_name_len + 1}} line {n_lines:4}/{n_lines:<4} done.")
 
+        if I.progress_listener is not None:
+            I.progress_listener.onProgressUpdate("create_canvas_color_" + color_name, 100)
+
     print(f"total time = {time.time() - t0:.2f}")
 
     return line_dict
@@ -739,6 +742,7 @@ def paint_canvas(
                 context.stroke()
 
     return img_filename
+
 
 # Takes line_dict and d_coord to paint the lines and nails, uses it to create an svg of the output, then saves it
 def paint_canvas_with_nodes(
@@ -1002,6 +1006,7 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
 
     # store instructions, in printable form
     lines = []
+    lines_export = []
 
     # function which takes a node (between 0 and n_nodes), and returns instructions (i.e. side, node identifier, and parity)
     # Note that we differentiate between ellipse and rectangle here
@@ -1060,13 +1065,22 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
             if is_full_niels == False:
                 lines.append(format_node(lines_colorgroup[-1][-1]))
 
+        lines_group_lines = []
         for idx_ in line_range:
 
             if is_full_niels == False:
                 lines.append(format_node(lines_colorgroup[-idx_][0]))
+                lines_group_lines.append(format_node(lines_colorgroup[-idx_][0]))
             else:
                 lines.append(format_node_per_niels(lines_colorgroup[idx_ - 1][0], lines_colorgroup[idx_ - 1][1]))
+                lines_group_lines.append(
+                    format_node_per_niels(lines_colorgroup[idx_ - 1][0], lines_colorgroup[idx_ - 1][1]))
         lines.extend(["=================", f"DONE  = {color_name} {thiscolor_group}"])
+
+        lines_export.append({"color": color_name, "by_now": f"{total_nlines_so_far}/{total_nlines}",
+                             "by_end": f"{total_nlines_so_far + len(line_range)}/{total_nlines}",
+                             "now": f"{color_name} {thiscolor_group}", "lines": lines_group_lines})
+
         total_nlines_so_far += len(line_range)
 
     group_page_list = []
@@ -1245,7 +1259,7 @@ def generate_instructions_pdf(line_dict, I: Img, args: ThreadArtColorParams, fon
         print(
             r"\nBaseline:\nMDF: around 0.2 is enough. The stag_large sent to Ben was 0.209. This is with true diameter = 0.25, width 120cm, 10000 lines total. And I think down to 0.2 wouldn't have fucked it up, but smaller values might have.\nWheel: 0.264 is what I used for stag, probably 0.3 would have been better (it's got a transparent background!). This would mean about 7200 threads for a standard wheel.")
 
-    return {"path": pdf_filename, "stats": stats_list}
+    return {"path": pdf_filename, "stats": stats_list, "lines": lines_export}
 
 
 def create_list_of_all_lines(line_dict, args: ThreadArtColorParams):
@@ -1397,7 +1411,15 @@ def paint_canvas_plt(
 
     print(f"Saving to {img_filename!r}")
 
-    total = sum([len(line_dict_[list(I.palette.keys())[i]]) for i_idx, i in enumerate(group_orders)]) // 2
+    total = 0
+    for (i_idx, i) in enumerate(group_orders):
+        lines = line_dict_[list(I.palette.keys())[i]]
+        n_groups = len([j for j in group_orders if j == i])
+        group_order = len([j for j in group_orders[:i_idx] if j == i])
+        n = int(len(lines) / n_groups)
+        lines_to_draw = lines[::-1][n * group_order: n * (group_order + 1)]
+        total += len(lines_to_draw)
+
     progress_bar = tqdm(desc=f"Painted lines", total=total)
 
     for (i_idx, i) in enumerate(group_orders):
