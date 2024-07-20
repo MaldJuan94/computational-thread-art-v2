@@ -18,23 +18,24 @@ class NpEncoder(json.JSONEncoder):
 
 class CallBack():
     def onProgressUpdate(text, value):
+        text
         # Esta función se llamará cada vez que se actualice el progreso
-        print(f"{text}: {value}")
+        # print(f"{text}: {value}")
 
 
 PARAMS = dict(
     name="face",
     x=700,
-    n_nodes=500,
+    n_nodes=252,
     filename="face.jpeg",
     w_filename=None,
     palette=dict(
         white=[255, 255, 255],
         black=[0, 0, 0]
     ),
-    n_lines_per_color=[700, 4000],
+    n_lines_per_color=[700, 700],
     # n_lines_per_color = [5,5],
-    shape="Ellipses",
+    shape="EllipseS",
     n_random_lines=150,
     darkness=0.18,
     blur_rad=4,
@@ -155,8 +156,8 @@ result_pdf = generate_instructions_pdf(
     path="lines/"
 )
 
-result_dir = {"pdf": result_pdf, "template": result_template, "canvas": result_canvas}
+##result_dir = {"pdf": result_pdf, "template": result_template, "canvas": result_canvas}
 
-print(result_dir)
-
-print(json.dumps(result_dir, cls=NpEncoder))
+print(line_dict)
+#line_dict
+##print(json.dumps(result_dir, cls=NpEncoder))
