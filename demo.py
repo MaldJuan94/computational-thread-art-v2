@@ -35,7 +35,7 @@ PARAMS = dict(
     ),
     n_lines_per_color=[700, 700],
     # n_lines_per_color = [5,5],
-    shape="EllipseS",
+    shape="Ellipse",
     n_random_lines=150,
     darkness=0.18,
     blur_rad=4,
@@ -45,7 +45,7 @@ PARAMS = dict(
     offset_print=1,
     input_path="images/",
     output_path="outputs/",
-    crop_image=False,
+    crop_image=True,
     is_mobile=False,
     progress_listener=CallBack
 
@@ -158,6 +158,6 @@ result_pdf = generate_instructions_pdf(
 
 ##result_dir = {"pdf": result_pdf, "template": result_template, "canvas": result_canvas}
 
-print(line_dict)
+print(result_pdf)
 #line_dict
 ##print(json.dumps(result_dir, cls=NpEncoder))
