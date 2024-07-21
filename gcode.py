@@ -71,7 +71,6 @@ def generate_gcode(sides_list, drawing_depth,
               f"G1 Z{safe_height:.2f}; Go up to safe height"]
 
     # Start G-code
-
     for key, (x, y) in sides_list.items():
         g_code.append(f"G0 X{x:.2f} Y{y:.2f} ; Point {key}: move to position")
         g_code.append(f"G1 Z{-drawing_depth:.2f}; Go down to tie a knot")
@@ -219,7 +218,7 @@ def generate_circle_gcode(points, drawing_depth, safe_height):
         g_code.append(f"G1 Z{-drawing_depth:.2f}; Go down to tie a knot")
         g_code.append(f"G1 Z{safe_height:.2f}; Go up to safe height")
 
-        # End G-code
+    # End G-code
     g_code.append(F"G1 Z{safe_height:.2f} ; Go up to safe height")
     g_code.append("M30 ; End of program")
 
@@ -230,10 +229,10 @@ def calculate_angle_and_distance(p, center):
     x, y = p
     cx, cy = center
 
-    # Calcular el ángulo del punto respecto al centro
+    # Calculate the angle of the point with respect to the center
     angle = math.atan2(y - cy, x - cx)
 
-    # Calcular la distancia desde el centro hasta el punto
+    # Calculate the distance from the center to the point
     distance = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
 
     return angle, distance
@@ -242,7 +241,7 @@ def calculate_angle_and_distance(p, center):
 def generate_new_point_with_distance(center, angle, original_distance, new_distance):
     new_radius = original_distance + new_distance
 
-    # Calcular las nuevas coordenadas utilizando el ángulo y el nuevo radio
+    # Calculate the new coordinates using the angle and the new radius
     cx, cy = center
     x_new = cx + new_radius * math.cos(angle)
     y_new = cy + new_radius * math.sin(angle)
@@ -253,13 +252,13 @@ def generate_new_point_with_distance(center, angle, original_distance, new_dista
 def move_point_along_circumference(center, p, move_distance, radius):
     angle, _ = calculate_angle_and_distance(p, center)
 
-    # Calcular el ángulo adicional basado en la distancia deseada
+    # Calculate additional angle based on desired distance
     move_angle = move_distance / radius
 
-    # Calcular el nuevo ángulo
+    # Calculate the new angle
     new_angle = angle + move_angle
 
-    # Calcular las nuevas coordenadas utilizando el nuevo ángulo
+    # Calculate the new coordinates using the new angle
     cx, cy = center
     x_new = cx + radius * math.cos(new_angle)
     y_new = cy + radius * math.sin(new_angle)
@@ -268,17 +267,17 @@ def move_point_along_circumference(center, p, move_distance, radius):
 
 
 def determine_rotation_direction(center, p1, p2):
-    # Calcular ángulos para p1 y p2
+    # Calculate angles for p1 and p2
     angle1, _ = calculate_angle_and_distance(p1, center)
     angle2, _ = calculate_angle_and_distance(p2, center)
 
-    # Calcular la diferencia de ángulo
+    # Calculate the angle difference
     angle_difference = angle2 - angle1
 
-    # Normalizar la diferencia de ángulo para el rango [-π, π]
+    # Normalize the angle difference for the range [-π, π]
     angle_difference = (angle_difference + math.pi) % (2 * math.pi) - math.pi
 
-    # Determinar la dirección de rotación
+    # Determine the direction of rotation
     if angle_difference > 0:
         return "CCW"
     elif angle_difference < 0:
@@ -288,8 +287,6 @@ def determine_rotation_direction(center, p1, p2):
 
 
 def generate_circle_gcode_lines(lines_group, points, radius, nail_quantity, drawing_depth, safe_height, knot_height):
-    # point_distance = calculate_circle_uniform_distance(radius, nail_quantity)
-
     g_code_group = []
     for group in lines_group:
         current_line = group["lines"]
@@ -324,35 +321,6 @@ def generate_circle_gcode_lines(lines_group, points, radius, nail_quantity, draw
                         safe_height,
                         knot_height
                     )
-                    # center = (radius, radius)
-                    #
-                    # move_distance = (point_distance / 2)
-                    #
-                    # rotation_direction = determine_rotation_direction(center, points[value - 1], points[next_value - 1])
-                    #
-                    # if rotation_direction == 'CW':
-                    #     move_distance = move_distance * -1
-                    # elif rotation_direction != 'CCW':
-                    #     move_distance = 0
-                    #
-                    # moved_p1 = move_point_along_circumference(center, points[value - 1], move_distance, radius)
-                    # moved_p2 = move_point_along_circumference(center, points[next_value - 1], move_distance, radius)
-                    #
-                    # # Calcular ángulos y distancias para los puntos originales
-                    # angle1, distance = calculate_angle_and_distance(moved_p1, center)
-                    # angle2, distance = calculate_angle_and_distance(moved_p2, center)
-                    #
-                    # # Generar nuevos puntos en la circunferencia más grande
-                    # new_p1 = generate_new_point_with_distance(center, angle1, distance, point_distance)
-                    # new_p2 = generate_new_point_with_distance(center, angle2, distance, point_distance)
-                    #
-                    # g_code.append(f"G0 X{moved_p1[0]:2f} Y{moved_p1[1]:.2f} Z{safe_height:.2f}")
-                    # g_code.append(f"G1 Z{-drawing_depth:.2f}; Go down to tie a knot")
-                    #
-                    # g_code.append(f"G1 X{new_p1[0]:2f} Y{new_p1[1]:.2f}")
-                    # g_code.append(f"G1 X{new_p2[0]:2f} Y{new_p2[1]:.2f}")
-                    # g_code.append(f"G1 X{moved_p2[0]:2f} Y{moved_p2[1]:.2f}")
-                    # g_code.append(f"G1 Z{knot_height:.2f}; Go up to safe height")
 
         g_code.append("M30 ; End of program")
         g_code_group.append({"color": group['color'], "gcode": g_code})
@@ -365,17 +333,19 @@ def generate_gcode_square_for_circle(point_from, point_to, radius, nail_quantity
     point_distance = calculate_circle_uniform_distance(radius, nail_quantity)
     center = (radius, radius)
     g_code = []
-    move_distance = (point_distance / 2)
+    move_distance = point_distance / 2.22
 
     rotation_direction = determine_rotation_direction(center, point_from, point_to)
 
     if rotation_direction == 'CW':
-        move_distance = move_distance * -1
-    elif rotation_direction != 'CCW':
-        move_distance = 0
-
-    moved_p1 = move_point_along_circumference(center, point_from, move_distance, radius)
-    moved_p2 = move_point_along_circumference(center, point_to, move_distance, radius)
+        moved_p1 = move_point_along_circumference(center, point_from, move_distance, radius)
+        moved_p2 = move_point_along_circumference(center, point_to, -move_distance, radius)
+    elif rotation_direction == 'CCW':
+        moved_p1 = move_point_along_circumference(center, point_from, -move_distance, radius)
+        moved_p2 = move_point_along_circumference(center, point_to, move_distance, radius)
+    else:
+        moved_p1 = move_point_along_circumference(center, point_from, move_distance, radius)
+        moved_p2 = move_point_along_circumference(center, point_to, move_distance, radius)
 
     # Calculate angles and distances for the original points
     angle1, distance = calculate_angle_and_distance(moved_p1, center)
@@ -396,6 +366,23 @@ def generate_gcode_square_for_circle(point_from, point_to, radius, nail_quantity
     g_code.append(f"G1 Z{knot_height:.2f}; Go up to safe height")
 
     return g_code
+
+
+def build_gcode(shape, size, input_group, sides, nail_quantity, drawing_depth, safe_height, knot_height):
+    if shape.lower() in ["circle", "ellipse", "round"]:
+        radius = size[0] / 2
+        center = (radius, radius)
+        points = generate_circle_points(center, radius, nail_quantity)
+        g_code_niels = generate_circle_gcode(points, drawing_depth, safe_height)
+        g_codes_groups = generate_circle_gcode_lines(input_group['lines'], points, radius, nail_quantity,
+                                                     drawing_depth, safe_height, knot_height)
+    else:
+        sides_niels = build_cnc_niels(size[0], size[1], sides)
+        g_code_niels = generate_gcode(sides_niels['sides_coordinates'], drawing_depth, safe_height)
+        g_codes_groups = generate_gcode_lines(input_group['lines'], sides_niels, sides, drawing_depth,
+                                              safe_height, knot_height)
+
+    return {'g_code_niels': g_code_niels, 'g_codes_groups': g_codes_groups}
 
 
 sides = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0,
@@ -1055,9 +1042,17 @@ input_lines_group = {'path': 'lines/lines-face-10.pdf',
                                     '147 72',
                                     '71 207', '208 105']}]}
 
-sides_niels = build_cnc_niels(100, 100, sides)
+response = build_gcode('circle', [100, 100], input_lines_circle_group, None, 252, 0, 5, 2)
 
-g_codes_groups = generate_gcode_lines(input_lines_group['lines'], sides_niels, sides, 0, 10, 5)
+# response = build_gcode('rectangle', [100, 100], input_lines_group, sides, 252, 0, 5, 2)
+
+for linea in response['g_code_niels']:
+    print(linea)
+
+for g_codes_group in response['g_codes_groups']:
+    print(g_codes_group['color'] + "\n")
+    for lines in g_codes_group['gcode']:
+        print(lines)
 
 # for g_codes_group in g_codes_groups:
 #     print(g_codes_group['color'] + "\n")
@@ -1068,23 +1063,22 @@ g_codes_groups = generate_gcode_lines(input_lines_group['lines'], sides_niels, s
 # for linea in gcode:
 #     print(linea)
 
-
 # Centro del círculo y radio
-size = 100
-radius = size / 2
-center = (radius, radius)  # Centro del área de trabajo de 100x100 mm
-nail_quantity = 252  # Cantidad de clavos
+# size = 100
+# radius = size / 2
+# center = (radius, radius)  # Centro del área de trabajo de 100x100 mm
+# nail_quantity = 252  # Cantidad de clavos
 
 # Generar los puntos en la circunferencia
-points = generate_circle_points(center, radius, nail_quantity)
+# points = generate_circle_points(center, radius, nail_quantity)
 
 # Generar el G-code para los puntos
 # gcode = generate_circle_gcode(points, 0, 2)
 # for linea in gcode:
 #     print(linea)
 
-g_codes_groups = generate_circle_gcode_lines(input_lines_circle_group['lines'], points, radius, nail_quantity, 0, 10, 5)
-for g_codes_group in g_codes_groups:
-    print(g_codes_group['color'] + "\n")
-    for lines in g_codes_group['gcode']:
-        print(lines)
+# g_codes_groups = generate_circle_gcode_lines(input_lines_circle_group['lines'], points, radius, nail_quantity, 0, 5, 2)
+# for g_codes_group in g_codes_groups:
+#     print(g_codes_group['color'] + "\n")
+#     for lines in g_codes_group['gcode']:
+#         print(lines)
