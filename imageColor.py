@@ -93,13 +93,6 @@ class ThreadArtColorParams():
             width_to_gap_ratio=1, progress_listener=self.progress_listener
         )
 
-        #print(self.d_coords)
-        ##print(self.d_pixels)
-        #print(self.d_joined)
-
-        print(self.d_sides)
-        #print(self.t_pixels)
-
         if len(self.group_orders) == 1 and self.group_orders.isdigit():
             self.group_orders = "".join([str(i) for i in range(len(self.palette))]) * int(self.group_orders)
 
