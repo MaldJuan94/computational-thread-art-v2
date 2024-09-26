@@ -1,14 +1,9 @@
 # ====== Includes all functions hard to categorise elsewhere ======
 
-import re
 from functools import reduce
 from PIL import Image, ImageDraw, ImageOps
 from IPython.display import display, HTML
 import numpy as np
-from pathlib import Path
-import pandas as pd
-# import qgrid
-import cairo
 import webcolors
 import torch as t
 
@@ -250,7 +245,7 @@ def draw_diagram(x, y, primary_coords=[], secondary_coords=[], primary_paths=[],
 
 
 def create_background(colors, x, y, line_width_multiplier, max_line_distance, n_lines_total, filename, scaling_factors=(1, 1, 1, 1)):
-    
+    import cairo
     """
     Creates an SVG background for my Squarespace thread art website
     

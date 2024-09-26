@@ -7,3 +7,10 @@
 *.iws
 *.iml
 *.ipr
+
+# Files dir
+outputs/
+images/
+animations/
+lines
+
