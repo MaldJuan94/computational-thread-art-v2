@@ -657,14 +657,14 @@ input_lines_group = {'path': 'lines/lines-face-10.pdf',
                                     '147 72',
                                     '71 207', '208 105']}]}
 
-response = build_gcode('circle', [100, 100], input_lines_circle_group['lines'], None, 252, 0, 5, 2)
+#response = build_gcode('circle', [100, 100], input_lines_circle_group['lines'], None, 252, 0, 5, 2, "CTA")
 
-# response = build_gcode('rectangle', [100, 100], input_lines_group['lines'], sides, 252, 0, 5, 2)
+response = build_gcode('rectangle', [100, 100], input_lines_group['lines'], sides, 252, 0, 5, 2, "CTA")
 
 for linea in response['g_code_niels']:
     print(linea)
 
 for g_codes_group in response['g_codes_groups']:
-    print(g_codes_group['color'] + "\n")
+    print(g_codes_group['color'] + "\n\n\n")
     for lines in g_codes_group['gcode']:
         print(lines)

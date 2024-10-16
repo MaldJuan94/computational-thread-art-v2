@@ -25,15 +25,15 @@ class CallBack():
 
 PARAMS = dict(
     name="face",
-    x=700,
-    n_nodes=252,
-    filename="face.jpeg",
+    x=770,
+    n_nodes=500,
+    filename="kratos.jpg",
     w_filename=None,
     palette=dict(
         white=[255, 255, 255],
         black=[0, 0, 0]
     ),
-    n_lines_per_color=[700, 700],
+    n_lines_per_color=[1, 2000],
     # n_lines_per_color = [5,5],
     shape="Ellipse",
     n_random_lines=150,

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js Scene</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.1/examples/jsm/"
+      }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { BloomPass } from 'three/addons/postprocessing/BloomPass.js';
+    import { FilmPass } from 'three/addons/postprocessing/FilmPass.js';
+    import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+       import { TextureLoader } from 'three';
+
+    let camera, scene, renderer, composer;
+
+    init();
+    animate()
+
+
+    function init() {
+        camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 1, 200);
+        camera.position.set(15, 8, 17);
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xFFFAF1);
+
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://unpkg.com/three@0.167.1/examples/jsm/libs/draco/gltf/');
+
+        const ambientLight = new THREE.AmbientLight(0x404040, 5);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
+        directionalLight.position.set(5, 5, 5).normalize();
+        scene.add(directionalLight);
+
+
+  // Crea y configura una luz puntual (SpotLight)
+    const spotLight = new THREE.SpotLight(0xf7ffaf, 100);
+    spotLight.position.set(1.346,-1.764, -0.120); // Ajusta la posición de la luz
+    spotLight.castShadow = true; // Habilita las sombras
+    spotLight.angle =0.274
+    spotLight.penumbra = 1; // Suaviza los bordes del cono de luz
+    spotLight.decay = 2; // Decaimiento de la luz
+    spotLight.distance = 100; // Distancia máxima de la luz
+
+
+    const pointLight = new THREE.PointLight(0xf7ffaf, 8.10);
+    pointLight.position.set(0.249,4.621, 0.335); // Ajusta la posición de la luz
+    pointLight.castShadow = false; // Habilita las sombras
+
+    pointLight.penumbra = 1; // Suaviza los bordes del cono de luz
+    pointLight.decay = 4.18; // Decaimiento de la luz
+    pointLight.distance = 2.70; // Distancia máxima de la luz
+
+
+        const pointLight2 = new THREE.PointLight(0xf7ffaf, 1.86);
+    pointLight2.position.set(0.249,4.874, -1.024); // Ajusta la posición de la luz
+    pointLight2.castShadow = false; // Habilita las sombras
+
+    pointLight2.penumbra = 1; // Suaviza los bordes del cono de luz
+    pointLight2.decay = 4.18; // Decaimiento de la luz
+    pointLight2.distance = 2.70; // Distancia máxima de la luz
+
+
+   const hemisphereLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 1);
+    hemisphereLight.position.set(-1.861,3.301, 0.184); // Ajusta la posición de la luz
+    // La primera parte del color es el color de la luz superior (como el cielo)
+    // La segunda parte del color es el color de la luz inferior (como la tierra)
+    // La intensidad de la luz se define en el tercer parámetro
+
+    // Agrega la luz a la escena
+    scene.add(hemisphereLight);
+scene.add(pointLight);
+scene.add(pointLight2);
+
+        const loader = new GLTFLoader();
+        loader.setDRACOLoader(dracoLoader);
+        loader.setPath('images/');
+       loader.load('untitled.glb', function (gltf) {
+            const model = gltf.scene;
+
+            // Identificar el objeto al que se desea aplicar la textura
+            const targetObject = model.getObjectByName('pCube231_TV2_0'); // Cambia 'nombre_del_objeto' por el nombre del objeto en tu modelo
+
+            if (targetObject) {
+
+            // Configura el objetivo de la luz para que apunte al cubo
+
+    // Configura el objetivo de la luz para que apunte al cubo
+    spotLight.target = targetObject;
+    scene.add(spotLight.target); // Asegúrate de añadir el target a la escena
+        scene.fog = new THREE.Fog(0xFFFAF1, 1, 100); // Ajusta los parámetros según sea necesario
+
+    // Añade la luz a la escena
+    scene.add(spotLight);
+
+                const textureLoader = new TextureLoader();
+                textureLoader.load('outputs/face_02.svg', function (texture) {
+                    targetObject.material.map = texture;
+                    targetObject.material.needsUpdate = true;
+                });
+            }
+
+            scene.add(model);
+            render(); // Render once the model is loaded and texture is applied
+        });
+
+        renderer = new THREE.WebGLRenderer({ antialias: true }); // Ensure antialiasing is enabled
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const ktx2Loader = new KTX2Loader()
+            .setTranscoderPath('jsm/libs/basis/')
+            .detectSupport(renderer);
+
+        loader.setKTX2Loader(ktx2Loader);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.addEventListener('change', render);
+        controls.target.set(0, 2, 0);
+        controls.update();
+
+        window.addEventListener('resize', onWindowResize);
+
+        // Set up EffectComposer
+        composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+
+        const filmPass = new FilmPass(0.35, 0.025, 648, false);
+        composer.addPass(filmPass);
+
+        const smaaPass = new SMAAPass(window.innerWidth, window.innerHeight);
+        composer.addPass(smaaPass);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        composer.setSize(window.innerWidth, window.innerHeight);
+        render(); // Render after resizing
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        render(); // Ensure render is called in each frame
+    }
+
+    function render() {
+        if (composer) {
+            composer.render();
+        }
+    }
+</script>
+
+</body>
+</html>
