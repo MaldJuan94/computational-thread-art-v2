@@ -7,6 +7,26 @@ from skimage.transform import resize
 from time import time
 import argparse
 from typing import Callable
+from dataclasses import dataclass
+import os
+
+
+@dataclass
+class KasparParams:
+    name: str
+    input_file: str
+    output_file: str
+    side_len: int = 900
+    export_strength: float = 0.1
+    pull_amount: int = None
+    random_nails: int = 50
+    radius1_multiplier: float = 1
+    radius2_multiplier: float = 1
+    nail_step: int = 2
+    wb: bool = False
+    rgb: bool = False
+    rect: bool = True
+    progress_listener: Callable = None
 
 
 def rgb2gray(rgb):
@@ -69,7 +89,7 @@ def get_aa_line(from_pos, to_pos, str_strength, picture):
     return line, rr, cc
 
 
-def find_best_nail_position(current_position, nails, str_pic, orig_pic, str_strength):
+def find_best_nail_position(current_position, nails, str_pic, orig_pic, str_strength, args):
     best_cumulative_improvement = -99999
     best_nail_position = None
     best_nail_idx = None
@@ -97,7 +117,7 @@ def find_best_nail_position(current_position, nails, str_pic, orig_pic, str_stre
     return best_nail_idx, best_nail_position, best_cumulative_improvement
 
 
-def create_art(nails, orig_pic, str_pic, str_strength, i_limit=None, progress_listener: Callable = None):
+def create_art(args, nails, orig_pic, str_pic, str_strength, i_limit=None, progress_listener: Callable = None):
     if progress_listener is not None:
         progress_listener.onProgressUpdate("init_create_art", -1)
 
@@ -127,7 +147,8 @@ def create_art(nails, orig_pic, str_pic, str_strength, i_limit=None, progress_li
                 break
 
         idx, best_nail_position, best_cumulative_improvement = find_best_nail_position(current_position, nails,
-                                                                                       str_pic, orig_pic, str_strength)
+                                                                                       str_pic, orig_pic, str_strength,
+                                                                                       args)
 
         if best_cumulative_improvement <= 0:
             fails += 1
@@ -198,10 +219,13 @@ def convert_nails_to_sides(nails_top, nails_bot, nails_right, nails_left):
     return {**top_points, **right_points, **bottom_points, **left_points}
 
 
-def kaspar_main(args, progress_listener: Callable = None):
+def kaspar_main(args):
     LONG_SIDE = 300
 
     img = mpimg.imread(args.input_file)
+
+    directory_path = os.path.dirname(args.output_file)
+    os.makedirs(directory_path + "/", exist_ok=True)
 
     if np.any(img > 100):
         img = img / 255
@@ -219,8 +243,8 @@ def kaspar_main(args, progress_listener: Callable = None):
 
     print(f"Nails amount: {len(nails['nails'])}")
 
-    if progress_listener is not None:
-        progress_listener.onProgressUpdate("nails_amount", len(nails['nails']))
+    if args.progress_listener is not None:
+        args.progress_listener.onProgressUpdate("nails_amount", len(nails['nails']))
 
     if args.rgb:
         iteration_strength = 0.1 if args.wb else -0.1
@@ -230,13 +254,16 @@ def kaspar_main(args, progress_listener: Callable = None):
         b = img[:, :, 2]
 
         str_pic_r = init_canvas(shape, black=args.wb)
-        pull_orders_r = create_art(nails['nails'], r, str_pic_r, iteration_strength, i_limit=args.pull_amount)
+        pull_orders_r = create_art(args, nails['nails'], r, str_pic_r, iteration_strength, i_limit=args.pull_amount,
+                                   progress_listener=args.progress_listener)
 
         str_pic_g = init_canvas(shape, black=args.wb)
-        pull_orders_g = create_art(nails['nails'], g, str_pic_g, iteration_strength, i_limit=args.pull_amount)
+        pull_orders_g = create_art(args, nails['nails'], g, str_pic_g, iteration_strength, i_limit=args.pull_amount,
+                                   progress_listener=args.progress_listener)
 
         str_pic_b = init_canvas(shape, black=args.wb)
-        pull_orders_b = create_art(nails['nails'], b, str_pic_b, iteration_strength, i_limit=args.pull_amount)
+        pull_orders_b = create_art(args, nails['nails'], b, str_pic_b, iteration_strength, i_limit=args.pull_amount,
+                                   progress_listener=args.progress_listener)
 
         max_pulls = np.max([len(pull_orders_r), len(pull_orders_g), len(pull_orders_b)])
         pull_orders_r = pull_orders_r + [pull_orders_r[-1]] * (max_pulls - len(pull_orders_r))
@@ -271,12 +298,14 @@ def kaspar_main(args, progress_listener: Callable = None):
         image_dimens = int(args.side_len * args.radius1_multiplier), int(args.side_len * args.radius2_multiplier)
         if args.wb:
             str_pic = init_canvas(shape, black=True)
-            pull_order = create_art(nails['nails'], orig_pic, str_pic, 0.05, i_limit=args.pull_amount)
+            pull_order = create_art(args, nails['nails'], orig_pic, str_pic, 0.05, i_limit=args.pull_amount,
+                                    progress_listener=args.progress_listener)
             blank = init_canvas(image_dimens, black=True)
 
         else:
             str_pic = init_canvas(shape, black=False)
-            pull_order = create_art(nails['nails'], orig_pic, str_pic, -0.05, i_limit=args.pull_amount)
+            pull_order = create_art(args, nails['nails'], orig_pic, str_pic, -0.05, i_limit=args.pull_amount,
+                                    progress_listener=args.progress_listener)
             blank = init_canvas(image_dimens, black=False)
 
         scaled_nails = scale_nails(
@@ -303,7 +332,7 @@ def kaspar_main(args, progress_listener: Callable = None):
             shape = "circle"
             sides = None
 
-        result_dir = {"output": args.output_file, "lines": pull_order,
+        result_dir = {"canvas": args.output_file, "lines": pull_order,
                       "nails": len(nails['nails']), "sides": sides, 'shape': shape, 'g_code': None}
 
         return result_dir
@@ -323,6 +352,7 @@ if __name__ == '__main__':
     parser.add_argument('--wb', action="store_true")
     parser.add_argument('--rgb', action="store_true")
     parser.add_argument('--rect', action="store_true")
+    parser.add_argument('--listener', dest="progress_listener", default=None)
 
     args = parser.parse_args()
     kaspar_main(args)

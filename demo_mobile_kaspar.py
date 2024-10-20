@@ -86,15 +86,17 @@ def call(progress_listener, input_str):
             progress_listener=progress_listener
         )
 
-        result_dir = kaspar_main(params, progress_listener)
+        kaspar_result = kaspar_main(KasparParams(**params))
 
-        g_code = build_gcode(args.shape, [input_data["real_size_width"], input_data["real_size_height"]],
-                             result_dir.pull_order,
-                             result_dir.sides, result_dir.nails,
+        g_code = build_gcode(kaspar_result["shape"], [input_data["real_size_width"], input_data["real_size_height"]],
+                             kaspar_result["lines"],
+                             kaspar_result["sides"], kaspar_result["nails"],
                              input_data["drawing_depth"], input_data["safe_height"], input_data["knot_height"],
                              "KASPAR")
 
-        result_dir['g_code'] = g_code
+        result_dir = {"lines":  kaspar_result["lines"], "template": None,
+                      "canvas": kaspar_result["canvas"], "nails": kaspar_result["nails"],
+                      'g_code': g_code}
 
         progress_listener.onResult(json.dumps(result_dir, cls=NpEncoder))
     except Exception as e:
