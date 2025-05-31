@@ -1,25 +1,32 @@
 import math
+import re
 
 
-def build_cnc_niels(width, height, sides_list, algorithm = "CTA"):
+def build_cnc_niels(width, height, sides_list, max_adjust_distance, algorithm="CTA"):
     left_points = [key for key, value in sides_list.items() if value == 2]
     top_points = [key for key, value in sides_list.items() if value == 1]
     right_points = [key for key, value in sides_list.items() if value == 0]
     bottom_points = [key for key, value in sides_list.items() if value == 3]
 
-    left_points_coordinates = generate_points_line((0, 0), (0, height), len(left_points))[::-1]
-    top_points_coordinates = generate_points_line((0, height), (width, height), len(top_points))
-    right_points_coordinates = generate_points_line((width, height), (width, 0), len(right_points))
-    bottom_points_coordinates = generate_points_line((width, 0), (0, 0), len(bottom_points))[::-1]
+    left_points_distance = min(calculate_square_uniform_distance((0, 0), (0, height), len(left_points)),
+                               max_adjust_distance)
+    top_points_distance = min(calculate_square_uniform_distance((0, height), (width, height), len(top_points)),
+                              max_adjust_distance)
+    right_points_distance = min(calculate_square_uniform_distance((width, height), (width, 0), len(right_points)),
+                                max_adjust_distance)
+    bottom_points_distance = min(calculate_square_uniform_distance((width, 0), (0, 0), len(bottom_points)),
+                                 max_adjust_distance)
+
+    left_points_coordinates = generate_points_line((0, 0), (0, height), len(left_points), left_points_distance)[::-1]
+    top_points_coordinates = generate_points_line((0, height), (width, height), len(top_points), top_points_distance)
+    right_points_coordinates = generate_points_line((width, height), (width, 0), len(right_points),
+                                                    right_points_distance)
+    bottom_points_coordinates = generate_points_line((width, 0), (0, 0), len(bottom_points), bottom_points_distance)[
+                                ::-1]
 
     if algorithm == "CTA":
         top_points_coordinates = top_points_coordinates[::-1]
         right_points_coordinates = right_points_coordinates[::-1]
-
-    left_points_distance = calculate_square_uniform_distance((0, 0), (0, height), len(left_points))
-    top_points_distance = calculate_square_uniform_distance((0, height), (width, height), len(top_points))
-    right_points_distance = calculate_square_uniform_distance((width, height), (width, 0), len(right_points))
-    bottom_points_distance = calculate_square_uniform_distance((width, 0), (0, 0), len(bottom_points))
 
     return {'left_points_distance': left_points_distance,
             'top_points_distance': top_points_distance,
@@ -49,10 +56,11 @@ def update_sides(sides_list, left_points, top_points, right_points, bottom_point
     return temp_sides
 
 
-def generate_points_line(start, end, nail_quantity):
+def generate_points_line(start, end, nail_quantity, adjust_distance):
     x1, y1 = start
     x2, y2 = end
-    return [(x1 + (x2 - x1) * (i + 1) / (nail_quantity + 1), y1 + (y2 - y1) * (i + 1) / (nail_quantity + 1)) for i in
+    return [((x1 + (x2 - x1) * (i + 1) / (nail_quantity + 1)) + adjust_distance,
+             (y1 + (y2 - y1) * (i + 1) / (nail_quantity + 1)) + adjust_distance) for i in
             range(nail_quantity)]
 
 
@@ -64,9 +72,9 @@ def calculate_square_uniform_distance(start, end, nail_quantity):
     return segment_distance
 
 
-def calculate_circle_uniform_distance(radius, nail_quantity):
+def calculate_circle_uniform_distance(radius, nail_quantity, max_adjust_distance):
     distance = (2 * math.pi * radius) / nail_quantity
-    return distance
+    return min(distance, max_adjust_distance)
 
 
 def generate_gcode(sides_list, drawing_depth,
@@ -161,39 +169,39 @@ def generate_gcode_lines_kaspar(lines_group, sides_info, side, drawing_depth, sa
     for idx, value in enumerate(flatten_group_line):
         if idx == 0:
             g_code.append(
-                f"G0 X{sides_coord[value ][0]:.2f} Y{sides_coord[value ][1]:.2f} ; Point {value}: move to "
+                f"G0 X{sides_coord[value][0]:.2f} Y{sides_coord[value][1]:.2f} ; Point {value}: move to "
                 f"position (first)")
             g_code.append(f"G1 Z{-drawing_depth:.2f}; Go down to tie a knot")
             g_code.append(f"G1 Z{safe_height:.2f}; Go up to safe height")
         elif idx == size_group_line - 1:
             g_code.append(
-                f"G0 X{sides_coord[value ][0]:.2f} Y{sides_coord[value ][1]:.2f} ; Point {value}: move to "
+                f"G0 X{sides_coord[value][0]:.2f} Y{sides_coord[value][1]:.2f} ; Point {value}: move to "
                 f"position (last)")
             g_code.append(f"G1 Z{-drawing_depth:.2f}; Go down to tie a knot")
             g_code.append(f"G1 Z{safe_height:.2f}; Go up to safe height")
         else:
-            g_code.append( f"; Point {value}: move to ")
-            if side[value ] in [0, 2]:
+            g_code.append(f"; Point {value}: move to ")
+            if side[value] in [0, 2]:
                 g_code += generate_gcode_square(sides_coord[value][0],
-                                                sides_coord[value ][1],
-                                                sides_coord[value ][0],
+                                                sides_coord[value][1],
+                                                sides_coord[value][0],
                                                 sides_coord[value][1],
                                                 drawing_depth,
                                                 safe_height,
                                                 knot_height,
                                                 vertical_points_distance,
-                                                side[value ] == 0,
-                                                True,)
+                                                side[value] == 0,
+                                                True, )
             if side[value] in [1, 3]:
-                g_code += generate_gcode_square(sides_coord[value ][0],
-                                                sides_coord[value ][1],
-                                                sides_coord[value ][0],
-                                                sides_coord[value ][1],
+                g_code += generate_gcode_square(sides_coord[value][0],
+                                                sides_coord[value][1],
+                                                sides_coord[value][0],
+                                                sides_coord[value][1],
                                                 drawing_depth,
                                                 safe_height,
                                                 knot_height,
                                                 horizontal_points_distance,
-                                                side[value ] == 1,
+                                                side[value] == 1,
                                                 False)
 
     g_code.append("M30 ; End of program")
@@ -272,7 +280,7 @@ def generate_circle_points(center, radius, nail_quantity, algorithm="CTA"):
     return points
 
 
-def generate_circle_gcode(points, drawing_depth, safe_height):
+def generate_circle_gcode(points, drawing_depth, safe_height, adjust_distance):
     g_code = ["G90 ; Use absolute coordinates", "G21 ; Use units in millimeters",
               f"G1 Z{safe_height:.2f}; Go up to safe height"]
 
@@ -286,7 +294,7 @@ def generate_circle_gcode(points, drawing_depth, safe_height):
     g_code.append(F"G1 Z{safe_height:.2f} ; Go up to safe height")
     g_code.append("M30 ; End of program")
 
-    return g_code
+    return shift_gcode(g_code, adjust_distance, adjust_distance)
 
 
 def calculate_angle_and_distance(p, center):
@@ -350,7 +358,8 @@ def determine_rotation_direction(center, p1, p2):
         return "same_point"
 
 
-def generate_circle_gcode_lines(lines_group, points, radius, nail_quantity, drawing_depth, safe_height, knot_height):
+def generate_circle_gcode_lines(lines_group, points, radius, nail_quantity, drawing_depth, safe_height, knot_height,
+                                adjust_distance):
     g_code_group = []
     for group in lines_group:
         current_line = group["lines"]
@@ -383,16 +392,18 @@ def generate_circle_gcode_lines(lines_group, points, radius, nail_quantity, draw
                         nail_quantity,
                         drawing_depth,
                         safe_height,
-                        knot_height
+                        knot_height,
+                        adjust_distance
                     )
 
         g_code.append("M30 ; End of program")
-        g_code_group.append({"color": group['color'], "gcode": g_code})
+        g_code_group.append({"color": group['color'], "gcode": shift_gcode(g_code, adjust_distance, adjust_distance)})
 
     return g_code_group
 
 
-def generate_circle_gcode_lines_kaspar(lines_group, points, radius, nail_quantity, drawing_depth, safe_height, knot_height):
+def generate_circle_gcode_lines_kaspar(lines_group, points, radius, nail_quantity, drawing_depth, safe_height,
+                                       knot_height, adjust_distance):
     g_code_group = []
 
     size_group_line = len(lines_group)
@@ -408,7 +419,7 @@ def generate_circle_gcode_lines_kaspar(lines_group, points, radius, nail_quantit
             g_code.append(f"G1 Z{safe_height:.2f}; Go up to safe height")
         elif idx == size_group_line - 1:
             g_code.append(
-                f"G0 X{points[value][0]:.2f} Y{points[value ][1]:.2f} ; Point {value}: move to "
+                f"G0 X{points[value][0]:.2f} Y{points[value][1]:.2f} ; Point {value}: move to "
                 f"position (last)")
             g_code.append(f"G1 Z{-drawing_depth:.2f}; Go down to tie a knot")
             g_code.append(f"G1 Z{safe_height:.2f}; Go up to safe height")
@@ -421,18 +432,19 @@ def generate_circle_gcode_lines_kaspar(lines_group, points, radius, nail_quantit
                 drawing_depth,
                 safe_height,
                 knot_height,
+                adjust_distance,
                 "KASPAR"
             )
 
     g_code.append("M30 ; End of program")
-    g_code_group.append({"color": 'black', "gcode": g_code})
+    g_code_group.append({"color": 'black', "gcode": shift_gcode(g_code, adjust_distance, adjust_distance)})
 
     return g_code_group
 
 
 def generate_gcode_square_for_circle(point_from, point_to, radius, nail_quantity, drawing_depth, safe_height,
-                                     knot_height, algorithm = "CTA"):
-    point_distance = calculate_circle_uniform_distance(radius, nail_quantity)
+                                     knot_height, max_adjust_distance, algorithm="CTA"):
+    point_distance = calculate_circle_uniform_distance(radius, nail_quantity, max_adjust_distance)
     center = (radius, radius)
     g_code = []
     move_distance = point_distance / 2.22
@@ -473,26 +485,52 @@ def generate_gcode_square_for_circle(point_from, point_to, radius, nail_quantity
     return g_code
 
 
-def build_gcode(shape, size, input_group, list_sides, nail_quantity, drawing_depth, safe_height, knot_height, algorithm):
+def shift_gcode(gcode_lines, offset_x=0.0, offset_y=0.0):
+    shifted_lines = []
+
+    for line in gcode_lines:
+        x_match = re.search(r'X([-+]?[0-9]*\.?[0-9]+)', line)
+        y_match = re.search(r'Y([-+]?[0-9]*\.?[0-9]+)', line)
+
+        new_line = line
+
+        if x_match:
+            original_x = float(x_match.group(1))
+            new_x = original_x + offset_x
+            new_line = re.sub(r'X([-+]?[0-9]*\.?[0-9]+)', f'X{new_x:.3f}', new_line)
+
+        if y_match:
+            original_y = float(y_match.group(1))
+            new_y = original_y + offset_y
+            new_line = re.sub(r'Y([-+]?[0-9]*\.?[0-9]+)', f'Y{new_y:.3f}', new_line)
+
+        shifted_lines.append(new_line)
+
+    return shifted_lines
+
+
+def build_gcode(shape, size, input_group, list_sides, nail_quantity, drawing_depth, safe_height, knot_height,
+                algorithm, max_adjust_distance):
     if shape.lower() in ["circle", "ellipse", "round"]:
         radius = size[0] / 2
         center = (radius, radius)
         points = generate_circle_points(center, radius, nail_quantity, algorithm)
-        g_code_niels = generate_circle_gcode(points, drawing_depth, safe_height)
+        point_distance = calculate_circle_uniform_distance(radius, nail_quantity, max_adjust_distance)
+        g_code_niels = generate_circle_gcode(points, drawing_depth, safe_height, point_distance)
         if algorithm == "CTA":
             g_codes_groups = generate_circle_gcode_lines(input_group, points, radius, nail_quantity,
-                                                     drawing_depth, safe_height, knot_height)
+                                                         drawing_depth, safe_height, knot_height, point_distance)
         else:
             g_codes_groups = generate_circle_gcode_lines_kaspar(input_group, points, radius, nail_quantity,
-                                                         drawing_depth, safe_height, knot_height)
+                                                                drawing_depth, safe_height, knot_height, point_distance)
     else:
-        sides_niels = build_cnc_niels(size[0], size[1], list_sides, algorithm)
+        sides_niels = build_cnc_niels(size[0], size[1], list_sides, max_adjust_distance, algorithm)
         g_code_niels = generate_gcode(sides_niels['sides_coordinates'], drawing_depth, safe_height)
         if algorithm == "CTA":
             g_codes_groups = generate_gcode_lines(input_group, sides_niels, list_sides, drawing_depth,
-                                  safe_height, knot_height)
+                                                  safe_height, knot_height)
         else:
             g_codes_groups = generate_gcode_lines_kaspar(input_group, sides_niels, list_sides, drawing_depth,
-                                                  safe_height, knot_height)
+                                                         safe_height, knot_height)
 
     return {'g_code_niels': g_code_niels, 'g_codes_groups': g_codes_groups}
